@@ -211,7 +211,7 @@ async function runReplay({ store, barsClient, config, days = 20, persist = true 
 }
 
 async function scanLatestSession({ store, barsClient, config, persist = false }) {
-  const barsBySymbol = await barsClient.loadBars(config.universe, { days: 10 });
+  const barsBySymbol = await barsClient.loadBars(config.universe, { days: 20 });
   const dates = allSessionDates(barsBySymbol);
   const sessionDate = dates.at(-1);
   const signals = [];
