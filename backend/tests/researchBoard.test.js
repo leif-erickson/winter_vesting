@@ -264,7 +264,9 @@ describe('research board / next-to-explore ledger', () => {
     const md = fs.readFileSync(path.join(__dirname, '../../docs/RESEARCH.md'), 'utf8');
     assert.match(md, /leif API/);
     assert.match(md, /99\.4725/);
-    assert.match(md, /not in `DEFAULT_UNIVERSE`/);
+    assert.match(md, /HIGH_BETA/);
+    assert.match(md, /DEFAULT_UNIVERSE/);
+    assert.match(md, /not silently added/);
     assert.match(md, /GET \/trading\/rankings/);
     assert.match(md, /2026-09-04/);
     assert.match(md, /2026-09-11/);
