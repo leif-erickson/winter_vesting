@@ -1,0 +1,20 @@
+{
+  "name": "Stock Market Paper Day Trading",
+  "user": "ubuntu",
+  "install": "bash .cursor/install.sh",
+  "start": "bash .cursor/start.sh",
+  "terminals": [
+    {
+      "name": "backend",
+      "command": "cd backend && npm start"
+    },
+    {
+      "name": "frontend",
+      "command": "cd frontend && BROWSER=none PORT=3000 npm start"
+    }
+  ],
+  "ports": [
+    { "name": "frontend", "port": 3000 },
+    { "name": "backend", "port": 5000 }
+  ]
+}

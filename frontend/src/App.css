@@ -1,0 +1,118 @@
+:root {
+  color-scheme: light;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  line-height: 1.4;
+}
+
+body {
+  margin: 0;
+  background: #f4f1ea;
+  color: #1c1917;
+}
+
+.app {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.app-header h1 {
+  margin: 0;
+}
+
+.sub, .hint, .why {
+  color: #57534e;
+  font-size: 0.92rem;
+}
+
+nav {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+button, input, select {
+  font: inherit;
+  padding: 8px 12px;
+}
+
+button {
+  background: #1c1917;
+  color: #fafaf9;
+  border: 0;
+  cursor: pointer;
+}
+
+button.active {
+  background: #b45309;
+}
+
+.banner {
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+}
+
+.error {
+  color: #b91c1c;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+article, section {
+  background: #fff;
+  padding: 16px;
+  margin-bottom: 16px;
+  border: 1px solid #e7e5e4;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+th, td {
+  text-align: left;
+  vertical-align: top;
+  padding: 8px 6px;
+  border-bottom: 1px solid #e7e5e4;
+}
+
+.tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+}
+
+.tag.paper {
+  background: #e7e5e4;
+}
+
+.tag.live {
+  background: #d1fae5;
+}
+
+.signal {
+  padding: 8px 0;
+  border-bottom: 1px solid #e7e5e4;
+}
+
+@media (max-width: 720px) {
+  .cards {
+    grid-template-columns: 1fr;
+  }
+}

