@@ -1,5 +1,5 @@
 {
-  "name": "Stock Market Paper Day Trading",
+  "name": "Winter Vesting Paper Day Trading",
   "user": "ubuntu",
   "install": "bash .cursor/install.sh",
   "start": "bash .cursor/start.sh",
