@@ -42,6 +42,26 @@ describe('journal', () => {
     assert.match(listed[0].reason, /OR breakout/);
   });
 
+  it('stores a nullable broker_order_id without requiring it', async () => {
+    const store = createMemoryStore();
+    const opened = await store.insertTrade({
+      symbol: 'SOFI',
+      ts: '2024-03-04T10:00:00-04:00',
+      side: 'BUY',
+      setupId: 'orb_breakout',
+      features: {},
+      reason: 'test',
+      paperPrice: 10,
+      size: 1,
+      notional: 10,
+      status: 'open',
+      mode: 'paper',
+    });
+    assert.equal(opened.broker_order_id, null);
+    const updated = await store.setBrokerOrderId(opened.id, 'ord-paper-1');
+    assert.equal(updated.broker_order_id, 'ord-paper-1');
+  });
+
   it('defaults new setups to paper and not live-eligible', async () => {
     const store = createMemoryStore();
     const setups = await store.listSetups();

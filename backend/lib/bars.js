@@ -179,9 +179,46 @@ function hasAlpacaKeys(env = process.env) {
     && env.ALPACA_SECRET_KEY !== 'your_alpaca_secret');
 }
 
-function createBarsClient({ alpaca, env = process.env } = {}) {
+function rthComplete(now = new Date()) {
+  const p = etParts(now);
+  return p.hour * 60 + p.minute >= 16 * 60;
+}
+
+/**
+ * Latest completed RTH session date in America/New_York.
+ * If `now` is still inside RTH (or before the cash close) on a date that
+ * appears in `sessionDates`, drop today and take the prior session.
+ */
+function latestCompletedSessionDate(sessionDates, now = new Date()) {
+  const dates = [...new Set(sessionDates)].filter(Boolean).sort();
+  if (!dates.length) return null;
+  const today = sessionDateOf(now);
+  if (dates.at(-1) === today && !rthComplete(now)) {
+    return dates.length > 1 ? dates.at(-2) : null;
+  }
+  return dates.at(-1);
+}
+
+function createBarsClient({ alpaca, env = process.env, requireAlpaca = false } = {}) {
   return {
     async loadBars(symbols, { days = 20 } = {}) {
+      if (requireAlpaca) {
+        if (!hasAlpacaKeys(env)) {
+          const err = new Error(
+            'daily requires real ALPACA_API_KEY and ALPACA_SECRET_KEY (placeholders are not accepted). Refusing synthetic fallback so this live-data PoC cannot be faked.'
+          );
+          err.code = 'ALPACA_KEYS_REQUIRED';
+          throw err;
+        }
+        if (!alpaca) {
+          const err = new Error(
+            'daily requires an Alpaca client. Refusing synthetic fallback.'
+          );
+          err.code = 'ALPACA_CLIENT_REQUIRED';
+          throw err;
+        }
+        return loadAlpacaBars(alpaca, symbols, days);
+      }
       if (alpaca && hasAlpacaKeys(env)) {
         try {
           return await loadAlpacaBars(alpaca, symbols, days);
@@ -222,9 +259,12 @@ module.exports = {
   generateSyntheticBars,
   generateUniverseBars,
   createBarsClient,
+  loadAlpacaBars,
   hasAlpacaKeys,
   sessionDateOf,
   minuteOfDayOf,
+  latestCompletedSessionDate,
+  rthComplete,
   normalizeAlpacaBar,
   scenarioForDay,
 };

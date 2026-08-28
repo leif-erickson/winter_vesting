@@ -119,6 +119,7 @@ module.exports = {
   summarizeTrades,
   walkForwardFolds,
   rankSetup,
+  sessionOf,
   clearsPromotionGate,
   promotionDecision,
   rankAndPromote,

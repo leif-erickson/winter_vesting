@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS trade_journal (
   pnl DECIMAL,
   outcome VARCHAR(20),
   mode VARCHAR(16) NOT NULL DEFAULT 'paper',
+  broker_order_id VARCHAR(64),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -86,6 +87,10 @@ const { SETUPS } = require('./config');
 
 async function ensureSchema(pool) {
   await pool.query(DDL);
+  await pool.query(`
+    ALTER TABLE trade_journal
+      ADD COLUMN IF NOT EXISTS broker_order_id VARCHAR(64)
+  `);
   await pool.query(`
     INSERT INTO paper_account (id, starting_cash, cash, settled_cash, unsettled_cash, equity)
     VALUES (1, 100, 100, 100, 0, 100)

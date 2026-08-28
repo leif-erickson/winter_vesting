@@ -10,7 +10,8 @@
     "paper": "node cli.js",
     "paper:replay": "node cli.js replay",
     "paper:scan": "node cli.js scan",
-    "paper:rank": "node cli.js rank"
+    "paper:rank": "node cli.js rank",
+    "paper:daily": "node cli.js daily"
   },
   "dependencies": {
     "alpaca-trade-api": "npm:@alpacahq/alpaca-trade-api@^3.1.3",

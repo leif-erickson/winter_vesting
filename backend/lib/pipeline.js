@@ -46,7 +46,18 @@ function checkExit(position, bar, config) {
   return null;
 }
 
-async function closePosition({ store, account, position, bar, hint }) {
+async function mirrorOrder(orderMirror, order) {
+  if (!orderMirror || typeof orderMirror.submit !== 'function') return null;
+  try {
+    return await orderMirror.submit(order);
+  } catch (err) {
+    if (err.code === 'ALPACA_LIVE_REFUSED') throw err;
+    console.warn(`Alpaca paper mirror skipped (${order.symbol} ${order.side}): ${err.message}`);
+    return { submitted: false, reason: 'mirror_failed', message: err.message };
+  }
+}
+
+async function closePosition({ store, account, position, bar, hint, orderMirror }) {
   const sold = sell(account, {
     price: bar.close && hint !== 'stop' && hint !== 'target' ? bar.close : (hint === 'stop' ? position.stop : hint === 'target' ? position.target : bar.close),
     shares: position.quantity,
@@ -61,132 +72,175 @@ async function closePosition({ store, account, position, bar, hint }) {
     outcome: hint === 'session_flat' ? outcomeFromPnl(pnl) : (hint === 'stop' ? 'loss' : hint === 'target' ? 'win' : outcomeFromPnl(pnl)),
   });
   await store.upsertPosition({ symbol: position.symbol, quantity: 0 });
+  await mirrorOrder(orderMirror, {
+    symbol: position.symbol,
+    side: 'sell',
+    qty: position.quantity,
+    type: 'market',
+    timeInForce: 'day',
+  });
   return { account: { ...sold.account, equity: sold.account.settledCash + sold.account.unsettledCash }, closed, pnl };
 }
 
-async function runReplay({ store, barsClient, config, days = 20, persist = true }) {
+/**
+ * Simulate one RTH session: signals, paper fills, flatten-by-close.
+ * Does not submit live orders. Optional orderMirror may copy fills to Alpaca paper.
+ */
+async function simulateSession({
+  store,
+  account,
+  barsBySymbol,
+  sessionDate,
+  config,
+  orderMirror = null,
+}) {
+  account = maybeNewSession(account, sessionDate);
+  const open = [];
+  const sessionSignals = [];
+
+  const dayBars = [];
+  for (const symbol of config.universe) {
+    const symbolBars = barsBySymbol[symbol] || [];
+    dayBars.push(...barsForDate(symbolBars, sessionDate));
+  }
+  dayBars.sort((a, b) => a.minuteOfDay - b.minuteOfDay || a.symbol.localeCompare(b.symbol));
+
+  for (const symbol of config.universe) {
+    const symbolBars = barsBySymbol[symbol] || [];
+    const session = barsForDate(symbolBars, sessionDate);
+    if (!session.length) continue;
+    const prior = priorSessions(symbolBars, sessionDate, config.rvolLookbackSessions);
+    const { signals } = signalsForSymbol(session, { priorSessions: prior, config });
+    sessionSignals.push(...signals);
+  }
+  sessionSignals.sort((a, b) => a.minuteOfDay - b.minuteOfDay);
+
+  const barsByTs = new Map();
+  for (const bar of dayBars) {
+    const key = `${bar.symbol}:${bar.minuteOfDay}`;
+    barsByTs.set(key, bar);
+  }
+
+  const minutes = [...new Set(dayBars.map((b) => b.minuteOfDay))].sort((a, b) => a - b);
+  for (const minute of minutes) {
+    for (const position of [...open]) {
+      const bar = barsByTs.get(`${position.symbol}:${minute}`);
+      if (!bar) continue;
+      const exit = checkExit(position, bar, config);
+      if (exit) {
+        const closed = await closePosition({
+          store,
+          account,
+          position,
+          bar: { ...bar, close: exit.exitPrice },
+          hint: exit.outcomeHint,
+          orderMirror,
+        });
+        account = closed.account;
+        const idx = open.indexOf(position);
+        if (idx >= 0) open.splice(idx, 1);
+      }
+    }
+
+    const minuteSignals = sessionSignals.filter((s) => s.minuteOfDay === minute);
+    for (const signal of minuteSignals) {
+      const gate = allowEntry(account, config, open.length);
+      if (!gate.ok) continue;
+      const sized = sizePosition({
+        settledCash: account.settledCash,
+        price: signal.paperPrice,
+        startingCash: config.startingCash,
+        maxPositionPct: config.maxPositionPct,
+      });
+      if (sized.shares <= 0) continue;
+      const bought = buy(account, { price: signal.paperPrice, shares: sized.shares });
+      if (!bought.ok) continue;
+      account = {
+        ...bought.account,
+        equity: bought.account.settledCash + bought.account.unsettledCash + sized.notional,
+      };
+      const mirrored = await mirrorOrder(orderMirror, {
+        symbol: signal.symbol,
+        side: (signal.side || 'buy').toLowerCase(),
+        qty: sized.shares,
+        type: 'market',
+        timeInForce: 'day',
+        paperPrice: signal.paperPrice,
+      });
+      const row = await store.insertTrade({
+        symbol: signal.symbol,
+        ts: signal.ts,
+        side: signal.side,
+        setupId: signal.setupId,
+        features: signal.features,
+        reason: signal.reason,
+        paperPrice: signal.paperPrice,
+        size: sized.shares,
+        notional: sized.notional,
+        stop: signal.stop,
+        target: signal.target,
+        status: 'open',
+        mode: 'paper',
+        brokerOrderId: mirrored?.brokerOrderId || null,
+      });
+      open.push({
+        symbol: signal.symbol,
+        quantity: sized.shares,
+        avgPrice: signal.paperPrice,
+        stop: signal.stop,
+        target: signal.target,
+        tradeId: row.id,
+        setupId: signal.setupId,
+      });
+      await store.upsertPosition({
+        symbol: signal.symbol,
+        quantity: sized.shares,
+        avgPrice: signal.paperPrice,
+        openedAt: signal.ts,
+        setupId: signal.setupId,
+      });
+    }
+  }
+
+  for (const position of [...open]) {
+    const last = dayBars.filter((b) => b.symbol === position.symbol).at(-1);
+    if (!last) continue;
+    const closed = await closePosition({
+      store,
+      account,
+      position,
+      bar: last,
+      hint: 'session_flat',
+      orderMirror,
+    });
+    account = closed.account;
+    const idx = open.indexOf(position);
+    if (idx >= 0) open.splice(idx, 1);
+  }
+
+  return { account, sessionSignals };
+}
+
+async function runReplay({ store, barsClient, config, days = 20, persist = true, orderMirror = null }) {
   const barsBySymbol = await barsClient.loadBars(config.universe, { days });
   if (persist && store.resetPaper) {
     await store.resetPaper(config.startingCash);
   }
   let account = createAccount(config.startingCash);
-  const open = [];
   const allSignals = [];
   const dates = allSessionDates(barsBySymbol);
 
   for (const sessionDate of dates) {
-    account = maybeNewSession(account, sessionDate);
-
-    const dayBars = [];
-    for (const symbol of config.universe) {
-      const symbolBars = barsBySymbol[symbol] || [];
-      dayBars.push(...barsForDate(symbolBars, sessionDate));
-    }
-    dayBars.sort((a, b) => a.minuteOfDay - b.minuteOfDay || a.symbol.localeCompare(b.symbol));
-
-    const sessionSignals = [];
-    for (const symbol of config.universe) {
-      const symbolBars = barsBySymbol[symbol] || [];
-      const session = barsForDate(symbolBars, sessionDate);
-      if (!session.length) continue;
-      const prior = priorSessions(symbolBars, sessionDate, config.rvolLookbackSessions);
-      const { signals } = signalsForSymbol(session, { priorSessions: prior, config });
-      sessionSignals.push(...signals);
-      allSignals.push(...signals);
-    }
-    sessionSignals.sort((a, b) => a.minuteOfDay - b.minuteOfDay);
-
-    const barsByTs = new Map();
-    for (const bar of dayBars) {
-      const key = `${bar.symbol}:${bar.minuteOfDay}`;
-      barsByTs.set(key, bar);
-    }
-
-    const minutes = [...new Set(dayBars.map((b) => b.minuteOfDay))].sort((a, b) => a - b);
-    for (const minute of minutes) {
-      for (const position of [...open]) {
-        const bar = barsByTs.get(`${position.symbol}:${minute}`);
-        if (!bar) continue;
-        const exit = checkExit(position, bar, config);
-        if (exit) {
-          const closed = await closePosition({
-            store,
-            account,
-            position,
-            bar: { ...bar, close: exit.exitPrice },
-            hint: exit.outcomeHint,
-          });
-          account = closed.account;
-          const idx = open.indexOf(position);
-          if (idx >= 0) open.splice(idx, 1);
-        }
-      }
-
-      const minuteSignals = sessionSignals.filter((s) => s.minuteOfDay === minute);
-      for (const signal of minuteSignals) {
-        const gate = allowEntry(account, config, open.length);
-        if (!gate.ok) continue;
-        const sized = sizePosition({
-          settledCash: account.settledCash,
-          price: signal.paperPrice,
-          startingCash: config.startingCash,
-          maxPositionPct: config.maxPositionPct,
-        });
-        if (sized.shares <= 0) continue;
-        const bought = buy(account, { price: signal.paperPrice, shares: sized.shares });
-        if (!bought.ok) continue;
-        account = {
-          ...bought.account,
-          equity: bought.account.settledCash + bought.account.unsettledCash + sized.notional,
-        };
-        const row = await store.insertTrade({
-          symbol: signal.symbol,
-          ts: signal.ts,
-          side: signal.side,
-          setupId: signal.setupId,
-          features: signal.features,
-          reason: signal.reason,
-          paperPrice: signal.paperPrice,
-          size: sized.shares,
-          notional: sized.notional,
-          stop: signal.stop,
-          target: signal.target,
-          status: 'open',
-          mode: 'paper',
-        });
-        open.push({
-          symbol: signal.symbol,
-          quantity: sized.shares,
-          avgPrice: signal.paperPrice,
-          stop: signal.stop,
-          target: signal.target,
-          tradeId: row.id,
-          setupId: signal.setupId,
-        });
-        await store.upsertPosition({
-          symbol: signal.symbol,
-          quantity: sized.shares,
-          avgPrice: signal.paperPrice,
-          openedAt: signal.ts,
-          setupId: signal.setupId,
-        });
-      }
-    }
-
-    for (const position of [...open]) {
-      const last = dayBars.filter((b) => b.symbol === position.symbol).at(-1);
-      if (!last) continue;
-      const closed = await closePosition({
-        store,
-        account,
-        position,
-        bar: last,
-        hint: 'session_flat',
-      });
-      account = closed.account;
-      const idx = open.indexOf(position);
-      if (idx >= 0) open.splice(idx, 1);
-    }
+    const sim = await simulateSession({
+      store,
+      account,
+      barsBySymbol,
+      sessionDate,
+      config,
+      orderMirror,
+    });
+    account = sim.account;
+    allSignals.push(...sim.sessionSignals);
   }
 
   if (persist) await store.saveAccount(account);
@@ -239,4 +293,10 @@ async function scanLatestSession({ store, barsClient, config, persist = false })
   };
 }
 
-module.exports = { runReplay, scanLatestSession, allSessionDates };
+module.exports = {
+  runReplay,
+  scanLatestSession,
+  simulateSession,
+  allSessionDates,
+  barsForDate,
+};

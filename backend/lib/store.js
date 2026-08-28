@@ -111,6 +111,7 @@ function createMemoryStore() {
         pnl: trade.pnl ?? null,
         outcome: trade.outcome ?? null,
         mode: trade.mode || 'paper',
+        broker_order_id: trade.brokerOrderId ?? trade.broker_order_id ?? null,
       };
       tradeId += 1;
       state.trades.push(row);
@@ -124,6 +125,12 @@ function createMemoryStore() {
       row.pnl = pnl;
       row.outcome = outcome;
       row.status = status;
+      return clone(row);
+    },
+    async setBrokerOrderId(id, brokerOrderId) {
+      const row = state.trades.find((t) => t.id === id);
+      if (!row) throw new Error(`trade ${id} not found`);
+      row.broker_order_id = brokerOrderId;
       return clone(row);
     },
     async listTrades({ limit = 200, setupId } = {}) {
@@ -224,8 +231,8 @@ function createPgStore(pool) {
       const { rows } = await pool.query(
         `INSERT INTO trade_journal
           (symbol, ts, side, setup_id, features, reason, paper_price, size, notional,
-           stop_price, target_price, status, exit_ts, exit_price, pnl, outcome, mode)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+           stop_price, target_price, status, exit_ts, exit_price, pnl, outcome, mode, broker_order_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
          RETURNING *`,
         [
           trade.symbol,
@@ -245,6 +252,7 @@ function createPgStore(pool) {
           trade.pnl ?? null,
           trade.outcome ?? null,
           trade.mode || 'paper',
+          trade.brokerOrderId ?? trade.broker_order_id ?? null,
         ]
       );
       return rows[0];
@@ -255,6 +263,13 @@ function createPgStore(pool) {
          SET exit_ts=$2, exit_price=$3, pnl=$4, outcome=$5, status=$6
          WHERE id=$1 RETURNING *`,
         [id, exitTs, exitPrice, pnl, outcome, status]
+      );
+      return rows[0];
+    },
+    async setBrokerOrderId(id, brokerOrderId) {
+      const { rows } = await pool.query(
+        `UPDATE trade_journal SET broker_order_id=$2 WHERE id=$1 RETURNING *`,
+        [id, brokerOrderId]
       );
       return rows[0];
     },

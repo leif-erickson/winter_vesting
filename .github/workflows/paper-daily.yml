@@ -1,0 +1,72 @@
+name: Paper daily PoC
+
+on:
+  schedule:
+    # 20:30 UTC ≈ 16:30 America/New_York during EDT (UTC-4), after the 16:00 ET cash close.
+    # During EST (UTC-5) this is 15:30 ET — before the cash close. DST caveat; adjust if needed.
+    - cron: '30 20 * * 1-5'
+  workflow_dispatch:
+
+jobs:
+  paper-daily:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install
+        working-directory: backend
+        run: npm ci
+
+      - name: Run daily paper PoC
+        working-directory: backend
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          # ALPACA_SUBMIT_PAPER is intentionally unset. Local journal is the fill
+          # source of truth. Do not enable paper-order submit in CI.
+          TZ: America/New_York
+        run: npm run paper:daily
+
+      - name: Upload report
+        if: hashFiles('backend/reports/latest.md') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: paper-daily
+          path: backend/reports/latest.md
+
+      - name: Job summary
+        if: hashFiles('backend/reports/latest.md') != ''
+        run: cat backend/reports/latest.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Post Slack webhook
+        if: success()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -z "${SLACK_WEBHOOK_URL}" ]; then
+            echo "No SLACK_WEBHOOK_URL secret; skipping Slack post."
+            exit 0
+          fi
+          python3 - <<'PY'
+          import json, os, urllib.request
+          text = open("backend/reports/latest.md", encoding="utf-8").read()
+          payload = json.dumps({"text": text}).encode("utf-8")
+          req = urllib.request.Request(
+              os.environ["SLACK_WEBHOOK_URL"],
+              data=payload,
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+          try:
+              with urllib.request.urlopen(req, timeout=30) as resp:
+                  resp.read()
+          except Exception:
+              raise SystemExit("Slack webhook post failed") from None
+          PY
