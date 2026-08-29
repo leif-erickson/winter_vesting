@@ -62,7 +62,13 @@ describe('facet budget / instrument families / books', () => {
     const config = loadConfig();
     assert.equal(config.assetBooks.stocks.venue, 'alpaca_paper');
     assert.equal(ASSET_BOOKS.futures.live, 'wstrat_candlemaster');
+    assert.equal(ASSET_BOOKS.futures.venue, 'rithmic_stub');
+    assert.match(ASSET_BOOKS.futures.notes, /Globex Sunday 4:00 PM MT/);
+    assert.match(ASSET_BOOKS.futures.notes, /nq_es_auction/);
     assert.equal(ASSET_BOOKS.options.live, 'not_on_100_cash_rh');
     assert.equal(ASSET_BOOKS.crypto.live, 'never_this_repo');
+    assert.equal(ASSET_BOOKS.crypto.venue, 'ccxt_paper');
+    assert.match(ASSET_BOOKS.crypto.notes, /Weekend\/24h/);
+    assert.match(ASSET_BOOKS.crypto.notes, /BTC\/ETH/);
   });
 });

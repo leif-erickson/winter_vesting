@@ -72,14 +72,14 @@ const SWING_BOOKS = {
     gateEntries: false,
     book: 'gann_swing',
     timeframe: 'D/W',
-    note: 'Unparked D/W TIA mechanical swing-chart (not Square of 9). Track=tia_gann_swing. Not a 6th 5m ORB facet. Never stack.',
+    note: 'Unparked D/W TIA mechanical swing-chart (not Square of 9). Track=tia_gann_swing. Weekend/24h path is crypto_gann_swing (BTC/ETH, ccxt_paper). Not a 6th 5m ORB facet. Never stack.',
   },
   tori: {
     status: 'swing_book',
     gateEntries: false,
     book: 'tori_trendlines',
     timeframe: '4h',
-    note: '4H workhorse (do not drop below 4H). Track=tori_trendline. Official ToriTradez/TradeZella only. Not stacked on 5m ORB or on Gann.',
+    note: '4H workhorse (do not drop below 4H). Energy/metals futures (CL/PL/GC), not US cash. Track=tori_trendline. Official ToriTradez/TradeZella only. Not stacked on 5m ORB or on Gann. Fills not live.',
   },
 };
 

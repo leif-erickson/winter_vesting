@@ -53,7 +53,7 @@ function asTrack(input = {}) {
   }
   const book = optionalText(input.book);
   if (book === 'tori_trendlines') return 'tori_trendline';
-  if (book === 'gann_swing') return 'tia_gann_swing';
+  if (book === 'gann_swing' || book === 'crypto_gann_swing') return 'tia_gann_swing';
   return null;
 }
 

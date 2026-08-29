@@ -22,6 +22,8 @@ const TORI_OFFICIAL = 'https://toritradez.com/';
 const TORI_TRADEZELLA = 'https://www.tradezella.com/strategies/trendline-strategy';
 const TIA_WHAT = 'https://tiainvestor.com/what-is-tia/';
 const TIA_GANN_INDICATOR = 'https://indicators.tiainvestor.com/tia-gann-swing-indicator';
+const CME_TRADING_HOURS = 'https://www.cmegroup.com/trading-hours.html';
+const SESSION_TZ = 'America/Denver';
 
 const BLUEPRINTS = {
   walkForward: {
@@ -114,7 +116,22 @@ const RESEARCH_BOOKS = [
     status: 'paper',
     newsOverlay: 'skip_nfp_cpi_fomc',
     nextAction: 'run_wf',
-    note: 'Named 5m day-trade edge. OR=IB, VWAP=value, rvol=participation. This week’s experiment slot.',
+    note: 'Named 5m day-trade edge. OR=IB, VWAP=value, rvol=participation. Weekday US-cash experiment slot — not demoted.',
+  },
+  {
+    id: 'crypto_gann_swing',
+    school: 'gann',
+    schoolBook: 'gann',
+    track: 'tia_gann_swing',
+    kind: 'pattern',
+    instrumentFamily: 'btc_eth',
+    timeframe: 'D/W',
+    venue: 'ccxt_paper',
+    status: 'exploring',
+    newsOverlay: 'may_run_event_mornings',
+    nextAction: 'specify',
+    note: 'Weekend/24h book while US cash is shut. BTC primary, ETH second. Mechanical swing-chart (1/2/3-bar), not Square of 9. 18.6 LAND cycle is regime, not a trigger. Jackson Hole 2026-08-28 hawkish is a weekend overlay, not a 6th facet. Live RH crypto never_this_repo. Unmeasured; no OOS.',
+    sourceUrl: TIA_DRIVE_FOLDER,
   },
   {
     id: 'gann_swing',
@@ -137,14 +154,27 @@ const RESEARCH_BOOKS = [
     schoolBook: 'tori',
     track: 'tori_trendline',
     kind: 'pattern',
-    instrumentFamily: 'public_tape',
+    instrumentFamily: 'energy_metals',
     timeframe: '4h',
     venue: 'alpaca_paper',
     status: 'exploring',
     newsOverlay: 'may_run_event_mornings',
     nextAction: 'specify',
-    note: '4H workhorse (do not drop below 4H). Official ToriTradez/TradeZella only. Never stacked on AMT or Gann.',
+    note: '4H workhorse (do not drop below 4H). Energy/metals futures (CL/PL/GC public tape), not US cash. Venue alpaca_paper for now; Globex CL/PL hours apply (see sessionClocks). Fills are not live. Official ToriTradez/TradeZella only. Never stacked on AMT or Gann.',
     sourceUrl: TORI_OFFICIAL,
+  },
+  {
+    id: 'nq_es_auction',
+    school: 'amt',
+    schoolBook: 'amt',
+    kind: 'mechanical',
+    instrumentFamily: 'es_nq',
+    timeframe: '5m',
+    venue: 'rithmic_stub',
+    status: 'inbox',
+    newsOverlay: 'n/a',
+    nextAction: 'specify',
+    note: 'Globex session book (not US-cash OR). Sunday 4:00 PM MT week open. Specify only — do not implement a Globex OR detector this pass. Live later points at wstrat_candlemaster. NinjaTrader out. Unmeasured; no OOS.',
   },
   {
     id: 'brooks_5m',
@@ -245,18 +275,168 @@ const RESEARCH_BOOKS = [
 
 const NEWS_OVERLAY = {
   skip_nfp_cpi_fomc: '5m auction skips NFP 2026-09-04 / CPI 2026-09-11 / FOMC 2026-09-16 mornings (already paper).',
-  may_run_event_mornings: 'Gann/Tori higher-TF books may still run NFP/CPI/FOMC days.',
+  may_run_event_mornings: 'Gann/Tori higher-TF books may still run NFP/CPI/FOMC days. Crypto Gann D/W may run event mornings; Jackson Hole 2026-08-28 hawkish is a weekend overlay, not a 6th facet.',
   single_name_earnings_skip: 'Single-name earnings skip (AVGO 2026-09-02 AC optional skip).',
   when_overlay: 'Time overlays answer when, not a 6th entry facet.',
+  us_cash_closed: 'US cash closed (Labor Day 2026-09-07). Globex typically early halt — do not invent the exact halt time. Verify at CME trading hours.',
   'n/a': 'No news overlay on this book.',
 };
 
 const FILED_EVENTS = [
+  {
+    id: 'jackson_hole_warsh',
+    title: 'Jackson Hole — Fed Chair Kevin Warsh hawkish keynote',
+    date: '2026-08-28',
+    overlay: 'weekend_news_overlay',
+    symbols: ['BTC-USD', 'ETH-USD'],
+    note: 'News overlay, not a 6th facet. BTC off Thursday high ~$81,455; news support ~$76,800–$77,000; resistance ~$79,500–$80,300. Spot BTC ETFs ~$202M Friday outflow. RH marks ~BTC $77,921 / ETH $2,448 (wide MM spread; Agentic crypto empty). Do not live-trade RH crypto.',
+  },
   { id: 'avgo', title: 'AVGO earnings', date: '2026-09-02', session: 'AC', overlay: 'optional_skip', symbols: ['AVGO'] },
   { id: 'nfp', title: 'NFP', date: '2026-09-04', overlay: 'skip_5m_auction' },
+  {
+    id: 'labor_day',
+    title: 'US Labor Day',
+    date: '2026-09-07',
+    overlay: 'us_cash_closed',
+    note: 'First Monday of September 2026. US cash closed. Globex typically early halt — do not invent the exact halt time. Verify holiday hours at CME.',
+    hoursUrl: CME_TRADING_HOURS,
+  },
   { id: 'cpi', title: 'CPI', date: '2026-09-11', overlay: 'skip_5m_auction' },
   { id: 'fomc', title: 'FOMC', date: '2026-09-16', overlay: 'skip_5m_auction' },
 ];
+
+/**
+ * Regular session clocks (America/Denver). Human + queryable.
+ * Holiday hours are not invented — point at CME.
+ */
+const SESSION_CLOCKS = {
+  timezone: SESSION_TZ,
+  holidayHoursInvented: false,
+  sources: {
+    cmeTradingHours: CME_TRADING_HOURS,
+  },
+  crypto: {
+    id: 'crypto_24h',
+    book: 'crypto_gann_swing',
+    venue: 'ccxt_paper',
+    open: '24/7',
+    includesSaturday: true,
+    live: 'never_this_repo',
+    note: 'BTC/ETH weekend/24h book. Live RH crypto stays off.',
+  },
+  globex: {
+    id: 'cme_globex',
+    books: ['nq_es_auction', 'tori_trendlines', 'orderflow'],
+    venue: 'rithmic_stub',
+    weekOpen: { weekday: 'Sunday', localTime: '16:00', label: 'Sunday 4:00 PM MT' },
+    weekClose: { weekday: 'Friday', localTime: '15:00', label: 'Friday 3:00 PM MT' },
+    dailyHalt: {
+      weekdays: ['Mon', 'Tue', 'Wed', 'Thu'],
+      start: '15:00',
+      end: '16:00',
+      label: 'Mon–Thu 3:00–4:00 PM MT',
+    },
+    equityIndexExtraHalt: {
+      start: '14:15',
+      end: '14:30',
+      label: '~2:15–2:30 PM MT',
+      note: 'Equity-index (ES/NQ) extra halt. Energy/metals (CL/PL/GC) follow product hours — verify at CME.',
+    },
+    holidayHours: 'Do not invent. See CME trading hours / holiday schedule.',
+    hoursUrl: CME_TRADING_HOURS,
+    fillsNotLive: true,
+    ninjaTrader: 'out',
+    liveLater: 'wstrat_candlemaster',
+  },
+  usCash: {
+    id: 'us_cash_rth',
+    book: 'stock_auction_5m',
+    venue: 'alpaca_paper',
+    rth: { startEt: '09:30', endEt: '16:00', startMt: '07:30', endMt: '14:00' },
+    note: 'Weekday RTH only. Closed weekends and US cash holidays (Labor Day 2026-09-07).',
+  },
+};
+
+function denverParts(date = new Date()) {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: SESSION_TZ,
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const parts = Object.fromEntries(fmt.formatToParts(date).map((p) => [p.type, p.value]));
+  const weekday = parts.weekday;
+  const hour = Number(parts.hour);
+  const minute = Number(parts.minute);
+  return {
+    weekday,
+    hour,
+    minute,
+    minuteOfDay: hour * 60 + minute,
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+  };
+}
+
+function globexRegularStatus(parts) {
+  const { weekday, minuteOfDay } = parts;
+  if (weekday === 'Sat') {
+    return { regularHoursOpen: false, inDailyHalt: false, inEquityIndexHalt: false, reason: 'weekend' };
+  }
+  if (weekday === 'Sun' && minuteOfDay < 16 * 60) {
+    return { regularHoursOpen: false, inDailyHalt: false, inEquityIndexHalt: false, reason: 'before_sunday_open' };
+  }
+  if (weekday === 'Fri' && minuteOfDay >= 15 * 60) {
+    return { regularHoursOpen: false, inDailyHalt: false, inEquityIndexHalt: false, reason: 'after_friday_close' };
+  }
+  const weekdaySession = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday)
+    || (weekday === 'Sun' && minuteOfDay >= 16 * 60);
+  if (!weekdaySession) {
+    return { regularHoursOpen: false, inDailyHalt: false, inEquityIndexHalt: false, reason: 'closed' };
+  }
+  const inDailyHalt = ['Mon', 'Tue', 'Wed', 'Thu'].includes(weekday)
+    && minuteOfDay >= 15 * 60 && minuteOfDay < 16 * 60;
+  const inEquityIndexHalt = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday)
+    && minuteOfDay >= (14 * 60 + 15) && minuteOfDay < (14 * 60 + 30);
+  return {
+    regularHoursOpen: !inDailyHalt,
+    inDailyHalt,
+    inEquityIndexHalt,
+    reason: inDailyHalt ? 'daily_halt' : (inEquityIndexHalt ? 'equity_index_halt' : 'open'),
+  };
+}
+
+function usCashRegularStatus(parts) {
+  const { weekday, minuteOfDay } = parts;
+  if (!['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday)) {
+    return { regularHoursOpen: false, reason: 'weekend' };
+  }
+  const open = minuteOfDay >= (7 * 60 + 30) && minuteOfDay < 14 * 60;
+  return { regularHoursOpen: open, reason: open ? 'rth' : 'outside_rth' };
+}
+
+function sessionClocksSnapshot(now = new Date()) {
+  const asOf = now.toISOString();
+  const local = denverParts(now);
+  const globex = globexRegularStatus(local);
+  const usCash = usCashRegularStatus(local);
+  return {
+    ...SESSION_CLOCKS,
+    asOf,
+    local,
+    holidayAdjusted: false,
+    regularHours: {
+      crypto: { regularHoursOpen: true, includesSaturday: true },
+      globex,
+      usCash,
+    },
+    note: 'Regular hours only. Holiday hours are not invented — verify at CME trading hours.',
+  };
+}
 
 /**
  * Verified Aug 10–28 2026 paper replay (leif API). Frozen facts.
@@ -349,6 +529,21 @@ const PAPER_SAMPLE = {
 
 const CATALOG_IDEAS = [
   {
+    id: 'catalog:crypto-gann-swing',
+    title: 'Crypto Gann D/W weekend/24h book',
+    hypothesis: 'TIA Gann mechanical swing-chart on BTC/ETH (D/W), not Square of 9. Weekend/24h book while US cash is shut. 18.6 LAND cycle is regime. Jackson Hole 2026-08-28 hawkish is a weekend overlay, not a 6th facet. Specify only. Unmeasured; no OOS. Live RH crypto never_this_repo.',
+    status: 'exploring',
+    school: 'gann',
+    book: 'crypto_gann_swing',
+    track: 'tia_gann_swing',
+    timeframe: 'D/W',
+    instrumentFamily: 'btc_eth',
+    nextAction: 'specify',
+    sourceUrl: TIA_DRIVE_FOLDER,
+    source: 'catalog',
+    exploreRank: 1,
+  },
+  {
     id: 'catalog:gann-swing',
     title: 'Gann D/W swing as its own book',
     hypothesis: 'TIA Gann is mechanical swing-chart trend following, not Square of 9. Unparked D/W book. Not a 6th confirm on the 5m ORB auction. No detector this pass.',
@@ -361,22 +556,22 @@ const CATALOG_IDEAS = [
     nextAction: 'specify',
     sourceUrl: TIA_DRIVE_FOLDER,
     source: 'catalog',
-    exploreRank: 1,
+    exploreRank: 2,
   },
   {
     id: 'catalog:tori-trendlines',
     title: 'Tori 4h trendlines swing book',
-    hypothesis: 'Official ToriTradez/TradeZella only. 4H workhorse — do not drop below 4H. Public tape PL/CL/GC. Never stack with AMT or Gann. Skip Scribd and FX Replay extras.',
+    hypothesis: 'Official ToriTradez/TradeZella only. 4H workhorse — do not drop below 4H. Energy/metals futures (PL/CL/GC), not US cash. Never stack with AMT or Gann. Skip Scribd and FX Replay extras. Fills not live.',
     status: 'exploring',
     school: 'tori',
     book: 'tori_trendlines',
     track: 'tori_trendline',
     timeframe: '4h',
-    instrumentFamily: 'public_tape',
+    instrumentFamily: 'energy_metals',
     nextAction: 'specify',
     sourceUrl: TORI_OFFICIAL,
     source: 'catalog',
-    exploreRank: 2,
+    exploreRank: 3,
   },
   {
     id: 'catalog:orb-oos-honesty',
@@ -389,7 +584,7 @@ const CATALOG_IDEAS = [
     instrumentFamily: 'high_beta',
     nextAction: 'run_wf',
     source: 'catalog',
-    exploreRank: 3,
+    exploreRank: 4,
   },
   {
     id: 'catalog:auction-news-skip',
@@ -402,7 +597,20 @@ const CATALOG_IDEAS = [
     instrumentFamily: 'high_beta',
     nextAction: 'paper_forward',
     source: 'catalog',
-    exploreRank: 4,
+    exploreRank: 5,
+  },
+  {
+    id: 'catalog:nq-es-auction',
+    title: 'NQ/ES Globex auction book (specify, inbox)',
+    hypothesis: 'Sunday 4:00 PM MT Globex week open. AMT on ES/NQ 5m Globex session, not US-cash OR. Do not implement a Globex OR detector this pass. Live later: wstrat_candlemaster. NT out. Unmeasured; no OOS.',
+    status: 'inbox',
+    school: 'amt',
+    book: 'nq_es_auction',
+    timeframe: '5m',
+    instrumentFamily: 'es_nq',
+    nextAction: 'specify',
+    source: 'catalog',
+    exploreRank: 6,
   },
   {
     id: 'catalog:avgo-earnings-skip',
@@ -416,7 +624,7 @@ const CATALOG_IDEAS = [
     nextAction: 'paper_forward',
     symbols: ['AVGO'],
     source: 'catalog',
-    exploreRank: 5,
+    exploreRank: 7,
   },
   {
     id: 'catalog:brooks-later',
@@ -430,7 +638,7 @@ const CATALOG_IDEAS = [
     nextAction: 'specify',
     sourceUrl: BLUEPRINTS.brooks.url,
     source: 'catalog',
-    exploreRank: 6,
+    exploreRank: 8,
   },
   {
     id: 'catalog:tia-wyckoff',
@@ -444,7 +652,7 @@ const CATALOG_IDEAS = [
     nextAction: 'specify',
     sourceUrl: TIA_DRIVE_FOLDER,
     source: 'catalog',
-    exploreRank: 7,
+    exploreRank: 9,
   },
   {
     id: 'catalog:tia-elliott',
@@ -458,7 +666,7 @@ const CATALOG_IDEAS = [
     nextAction: 'specify',
     sourceUrl: TIA_DRIVE_FOLDER,
     source: 'catalog',
-    exploreRank: 8,
+    exploreRank: 10,
   },
   {
     id: 'catalog:tia-time-overlay',
@@ -472,7 +680,7 @@ const CATALOG_IDEAS = [
     nextAction: 'specify',
     sourceUrl: TIA_DRIVE_FOLDER,
     source: 'catalog',
-    exploreRank: 9,
+    exploreRank: 11,
   },
   {
     id: 'catalog:r-multiples',
@@ -485,7 +693,7 @@ const CATALOG_IDEAS = [
     instrumentFamily: 'all',
     nextAction: 'paper_forward',
     source: 'catalog',
-    exploreRank: 10,
+    exploreRank: 12,
   },
   {
     id: 'catalog:ict-smc-later',
@@ -498,7 +706,7 @@ const CATALOG_IDEAS = [
     instrumentFamily: 'es_nq',
     nextAction: 'specify',
     source: 'catalog',
-    exploreRank: 11,
+    exploreRank: 13,
   },
   {
     id: 'catalog:4h-cross-study',
@@ -507,7 +715,7 @@ const CATALOG_IDEAS = [
     status: 'inbox',
     nextAction: 'specify',
     source: 'catalog',
-    exploreRank: 12,
+    exploreRank: 14,
   },
 ];
 
@@ -587,13 +795,19 @@ function oosHonesty(setups = []) {
     orbBreakoutOosN: declaredN,
     minOosTrades,
     sqn: sqnSnapshot(declaredN),
-    note: 'OOS vs journal: only orb_breakout has OOS n=2 (unmeasured). Journal fills are unmeasured, not most-profitable. Do not invent a ranking. Do not compute SQN. Promotion still minOosTrades 8. Live off.',
+    note: 'OOS vs journal: only orb_breakout has OOS n=2 (unmeasured). Journal fills are unmeasured, not most-profitable. Crypto/futures books have no OOS yet — unmeasured, do not invent profitability. Do not invent a ranking. Do not compute SQN. Promotion still minOosTrades 8. Live off.',
     sample: PAPER_SAMPLE,
     oos: PAPER_SAMPLE.oos,
     journal: PAPER_SAMPLE.journal,
     gaps: PAPER_SAMPLE.gaps,
     events: FILED_EVENTS,
     frozenWindows: PAPER_SAMPLE.frozenWindows,
+    cryptoFutures: {
+      oos: false,
+      label: 'unmeasured',
+      liveEligible: false,
+      note: 'No OOS for crypto_gann_swing or nq_es_auction yet. Do not invent profitability.',
+    },
     setups: rows,
   };
 }
@@ -610,7 +824,22 @@ function boardSnapshot({ ideas = [], setups = [] } = {}) {
       book: 'stock_auction_5m',
       setupId: 'orb_breakout',
       nextAction: 'run_wf',
-      note: 'One school_book per slot. Never stack. Brooks is not this week.',
+      note: 'Weekday US-cash slot. One school_book per slot. Never stack. Not demoted. Brooks is not this week.',
+    },
+    weekendExperimentSlot: {
+      schoolBook: 'gann',
+      book: 'crypto_gann_swing',
+      track: 'tia_gann_swing',
+      status: 'exploring',
+      nextAction: 'specify',
+      note: 'Weekend/24h slot while US cash is shut. One school_book. Not stacked on stock_auction_5m or tori_trendline. Unmeasured. No OOS.',
+    },
+    sundayQueue: {
+      schoolBook: 'amt',
+      book: 'nq_es_auction',
+      status: 'inbox',
+      nextAction: 'specify',
+      note: 'Sunday 4:00 PM MT Globex week open. Specify only. Do not implement a Globex OR detector this pass.',
     },
     schoolBooks: [...SCHOOL_BOOKS],
     tracks: [...TRACKS],
@@ -620,13 +849,21 @@ function boardSnapshot({ ideas = [], setups = [] } = {}) {
       ...b,
       newsNote: NEWS_OVERLAY[b.newsOverlay] || NEWS_OVERLAY['n/a'],
     })),
+    sessionClocks: sessionClocksSnapshot(),
     nextToExplore: mergeExploreQueue(ideas),
     sources: SOURCES,
     news: {
       auction5m: NEWS_OVERLAY.skip_nfp_cpi_fomc,
       higherTfSwing: NEWS_OVERLAY.may_run_event_mornings,
       earnings: NEWS_OVERLAY.single_name_earnings_skip,
+      usCashClosed: NEWS_OVERLAY.us_cash_closed,
       filed: FILED_EVENTS,
+    },
+    cryptoFutures: {
+      oos: false,
+      label: 'unmeasured',
+      liveEligible: false,
+      note: 'No OOS for crypto_gann_swing or nq_es_auction yet. Do not invent profitability.',
     },
   };
 }
@@ -646,15 +883,19 @@ module.exports = {
   TORI_TRADEZELLA,
   TIA_WHAT,
   TIA_GANN_INDICATOR,
+  CME_TRADING_HOURS,
+  SESSION_TZ,
   BLUEPRINTS,
   SOURCES,
   RESEARCH_BOOKS,
   NEWS_OVERLAY,
   FILED_EVENTS,
+  SESSION_CLOCKS,
   PAPER_SAMPLE,
   CATALOG_IDEAS,
   mergeExploreQueue,
   oosHonesty,
   sqnSnapshot,
+  sessionClocksSnapshot,
   boardSnapshot,
 };

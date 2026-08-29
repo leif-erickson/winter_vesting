@@ -82,13 +82,15 @@ Doubling-horizon (`GOAL_DOUBLE_DAYS`) is a **measurement**, never a promotion ga
 | Book | Research here | Live | Notes |
 |---|---|---|---|
 | Stocks | Alpaca 5m paper | Robinhood MCP confirm-to-place after OOS | $100 cash, no options, flatten-by-close |
-| Crypto | config + `asset_class`; ccxt portfolio quotes | never from this repo | Nasdaq-beta glance (BTC/ETH) |
-| Futures | Rithmic stub; paper stats later | wstrat_candlemaster after R\|Protocol | NinjaTrader is out |
+| Crypto | config + `asset_class`; ccxt_paper weekend/24h book | never from this repo | TIA Gann D/W on BTC/ETH (`crypto_gann_swing`) |
+| Futures | Rithmic stub; Globex Sunday open | wstrat_candlemaster after R\|Protocol | NQ/ES AMT later; CL/PL Tori 4h; NT out; fills not live |
 | Options | research note / IV hypothesis | not on $100 RH cash | defined-risk; no fill engine this pass |
 
 Same economic event, different books. Do not stack QQQ + NQ + BTC as extra confirms on one stock trigger.
 
 Overnight / higher-TF swing is **`tia_gann_swing` (D/W) or `tori_trendline` (4H min)** — one track per slot, not extra 5m facets. See [RESEARCH.md](RESEARCH.md).
+
+Off-hours (US cash shut): research **crypto** (24/7, including Saturday) on `crypto_gann_swing` or **futures** (CME Globex, Sunday 4:00 PM MT week open) on `nq_es_auction` / `tori_trendlines`. Each is its own book. Never stack QQQ + NQ + BTC as confirms on `stock_auction_5m`. Live Robinhood crypto and live futures stay off (`never_this_repo` / `rithmic_stub`; futures live later is wstrat_candlemaster).
 
 ## Weekly maintenance
 
@@ -98,7 +100,7 @@ Overnight / higher-TF swing is **`tia_gann_swing` (D/W) or `tori_trendline` (4H 
 2. This sample’s OOS vs regime mix.
 3. Frozen-window P&amp;L share.
 4. Kill / park / promote per family (`live-eligible` only if gates clear **and** not `anomaly_dependent`).
-5. One experiment slot: one `school_book` (`amt` this week). Newest `strategy_ideas` in `inbox` / `exploring` that does not stack schools.
+5. One experiment slot: one `school_book` (weekday US-cash `amt` / `stock_auction_5m` — not demoted; weekend off-hours `crypto_gann_swing`). Newest `strategy_ideas` in `inbox` / `exploring` that does not stack schools.
 6. Cross-asset glance (QQQ vs NQ vs BTC).
 
 Weekday `paper:daily` is the tape. Weekly is where the edge is **maintained**. Next-to-explore ranking lives on `GET /research/board` and does not promote live-eligible.

@@ -18,6 +18,8 @@ const {
   sqnSnapshot,
   PAPER_SAMPLE,
   FILED_EVENTS,
+  CME_TRADING_HOURS,
+  sessionClocksSnapshot,
 } = require('../lib/researchBoard');
 const { SETUPS, PROMOTION_GATES, loadConfig, edgeSnapshot } = require('../lib/config');
 const { createMemoryStore } = require('../lib/store');
@@ -89,16 +91,98 @@ describe('research board / next-to-explore ledger', () => {
     assert.equal(orderflow.status, 'parked');
     assert.equal(orderflow.nextAction, 'specify');
     assert.match(orderflow.note, /NOT_IMPLEMENTED/);
+    assert.equal(orderflow.instrumentFamily, 'es_nq');
+    assert.equal(orderflow.venue, 'rithmic_stub');
     const stacked = RESEARCH_BOOKS.filter((b) => String(b.school || '').includes('+'));
     assert.equal(stacked.length, 0);
+  });
+
+  it('adds weekend crypto Gann and Sunday Globex NQ/ES books without live or new 5m stock facets', () => {
+    const crypto = RESEARCH_BOOKS.find((b) => b.id === 'crypto_gann_swing');
+    const nqes = RESEARCH_BOOKS.find((b) => b.id === 'nq_es_auction');
+    const tori = RESEARCH_BOOKS.find((b) => b.id === 'tori_trendlines');
+    assert.equal(crypto.schoolBook, 'gann');
+    assert.equal(crypto.track, 'tia_gann_swing');
+    assert.equal(crypto.instrumentFamily, 'btc_eth');
+    assert.equal(crypto.timeframe, 'D/W');
+    assert.equal(crypto.venue, 'ccxt_paper');
+    assert.equal(crypto.status, 'exploring');
+    assert.equal(crypto.nextAction, 'specify');
+    assert.match(crypto.note, /18\.6/);
+    assert.match(crypto.note, /Jackson Hole/);
+    assert.match(crypto.note, /unmeasured/i);
+    assert.equal(nqes.schoolBook, 'amt');
+    assert.equal(nqes.instrumentFamily, 'es_nq');
+    assert.equal(nqes.timeframe, '5m');
+    assert.equal(nqes.venue, 'rithmic_stub');
+    assert.equal(nqes.status, 'inbox');
+    assert.equal(nqes.nextAction, 'specify');
+    assert.match(nqes.note, /Globex/);
+    assert.match(nqes.note, /do not implement a Globex OR detector/i);
+    assert.equal(normalizeIdea({
+      title: 'Crypto Gann',
+      hypothesis: 'Specify the weekend book.',
+      book: 'crypto_gann_swing',
+    }).track, 'tia_gann_swing');
+    assert.equal(tori.instrumentFamily, 'energy_metals');
+    assert.equal(tori.venue, 'alpaca_paper');
+    assert.match(tori.note, /not US cash/);
+    assert.match(tori.note, /Fills are not live/);
+    const board = boardSnapshot({ setups: SETUPS });
+    assert.ok(board.books.some((b) => b.id === 'crypto_gann_swing'));
+    assert.ok(board.books.some((b) => b.id === 'nq_es_auction'));
+    assert.ok(board.books.some((b) => b.id === 'stock_auction_5m'));
+    assert.equal(board.liveEligibleFromBoard, false);
+    assert.equal(board.weekendExperimentSlot.book, 'crypto_gann_swing');
+    assert.equal(board.weekendExperimentSlot.nextAction, 'specify');
+    assert.equal(board.sundayQueue.book, 'nq_es_auction');
+    assert.equal(board.sundayQueue.status, 'inbox');
+    assert.equal(board.experimentSlot.book, 'stock_auction_5m');
+    assert.equal(board.cryptoFutures.oos, false);
+    assert.equal(board.cryptoFutures.label, 'unmeasured');
+    assert.equal(board.honesty.cryptoFutures.oos, false);
+    assert.equal(board.nextToExplore.every((i) => i.liveEligible === false), true);
+    assert.ok(board.nextToExplore.some((i) => i.book === 'crypto_gann_swing' && i.status === 'exploring'));
+    assert.ok(board.nextToExplore.some((i) => i.book === 'nq_es_auction' && i.status === 'inbox'));
+    assert.equal(board.nextToExplore[0].book, 'crypto_gann_swing');
+    for (const setup of SETUPS) {
+      assert.ok(setup.facets.length >= 2 && setup.facets.length <= 5);
+      assert.equal(setup.assetClass, 'stocks');
+    }
+    const cashFacets = SETUPS.flatMap((s) => s.facets);
+    assert.equal(cashFacets.includes('crypto_gann'), false);
+    assert.equal(cashFacets.includes('globex_or'), false);
+  });
+
+  it('exposes queryable session clocks and does not invent holiday hours', () => {
+    const saturday = sessionClocksSnapshot(new Date('2026-08-29T17:40:00.000Z'));
+    assert.equal(saturday.timezone, 'America/Denver');
+    assert.equal(saturday.holidayHoursInvented, false);
+    assert.equal(saturday.holidayAdjusted, false);
+    assert.equal(saturday.sources.cmeTradingHours, CME_TRADING_HOURS);
+    assert.equal(saturday.crypto.includesSaturday, true);
+    assert.equal(saturday.regularHours.crypto.regularHoursOpen, true);
+    assert.equal(saturday.regularHours.globex.regularHoursOpen, false);
+    assert.equal(saturday.regularHours.usCash.regularHoursOpen, false);
+    assert.match(saturday.globex.weekOpen.label, /Sunday 4:00 PM MT/);
+    assert.match(saturday.globex.dailyHalt.label, /Mon–Thu 3:00–4:00 PM MT/);
+    assert.match(saturday.globex.equityIndexExtraHalt.label, /2:15–2:30 PM MT/);
+    const sundayOpen = sessionClocksSnapshot(new Date('2026-08-30T22:05:00.000Z'));
+    assert.equal(sundayOpen.regularHours.globex.regularHoursOpen, true);
+    assert.equal(sundayOpen.regularHours.usCash.regularHoursOpen, false);
+    const board = boardSnapshot({ setups: SETUPS });
+    assert.equal(board.sessionClocks.holidayHoursInvented, false);
+    assert.equal(board.sessionClocks.sources.cmeTradingHours, 'https://www.cmegroup.com/trading-hours.html');
   });
 
   it('merges catalog ideas so an empty store still has a next-to-explore queue', () => {
     const queue = mergeExploreQueue([]);
     assert.ok(queue.length >= CATALOG_IDEAS.length);
     assert.equal(queue[0].status, 'exploring');
+    assert.ok(queue.some((i) => i.book === 'crypto_gann_swing'));
     assert.ok(queue.some((i) => i.book === 'gann_swing'));
     assert.ok(queue.some((i) => i.book === 'tori_trendlines'));
+    assert.ok(queue.some((i) => i.book === 'nq_es_auction'));
     assert.ok(queue.some((i) => i.status === 'paper'));
     assert.ok(queue.some((i) => i.status === 'inbox'));
     const statuses = queue.map((i) => i.status);
@@ -179,6 +263,12 @@ describe('research board / next-to-explore ledger', () => {
     assert.match(md, /1IxWVMr9jtN9vvRB0_8TEgW6PYKgoWqDG/);
     assert.match(md, /track=tori_trendline/);
     assert.match(md, /track=tia_gann_swing/);
+    assert.match(md, /crypto_gann_swing/);
+    assert.match(md, /nq_es_auction/);
+    assert.match(md, /cmegroup.com\/trading-hours.html/);
+    assert.match(md, /2026-09-07/);
+    assert.match(md, /Jackson Hole/);
+    assert.doesNotMatch(md, /Monday 2026-09-01 is Labor Day/);
     assert.doesNotMatch(md, /SQN = .*sqrt/i);
     assert.match(TIA_DRIVE_FOLDER, /1nyq_yaY-vvcZiS5pJxHDjAlHhI7jnbf9/);
     assert.equal(GANN_PDF_ID, '1YFGU7ACqUb_IiR2a2rSoQe58JJu23v2T');
@@ -256,9 +346,12 @@ describe('research board / next-to-explore ledger', () => {
 
     assert.equal(board.honesty.frozenWindows.scored, false);
     assert.deepEqual(FILED_EVENTS.map((e) => e.date), [
-      '2026-09-02', '2026-09-04', '2026-09-11', '2026-09-16',
+      '2026-08-28', '2026-09-02', '2026-09-04', '2026-09-07', '2026-09-11', '2026-09-16',
     ]);
-    assert.equal(board.news.filed.length, 4);
+    assert.equal(board.news.filed.length, 6);
+    assert.equal(FILED_EVENTS[0].id, 'jackson_hole_warsh');
+    assert.equal(FILED_EVENTS.find((e) => e.id === 'labor_day').date, '2026-09-07');
+    assert.equal(FILED_EVENTS.find((e) => e.id === 'labor_day').hoursUrl, CME_TRADING_HOURS);
     assert.equal(PAPER_SAMPLE.oos.orbBreakout.n, DECLARED_ORB_OOS_N);
 
     const md = fs.readFileSync(path.join(__dirname, '../../docs/RESEARCH.md'), 'utf8');

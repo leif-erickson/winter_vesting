@@ -75,12 +75,12 @@ const ASSET_BOOKS = {
   crypto: {
     venue: 'ccxt_paper',
     live: 'never_this_repo',
-    notes: 'BTC/ETH Nasdaq-beta glance only this pass',
+    notes: 'Weekend/24h book: TIA Gann D/W on BTC/ETH, ccxt_paper. Live RH crypto never from this repo.',
   },
   futures: {
     venue: 'rithmic_stub',
     live: 'wstrat_candlemaster',
-    notes: 'NQ/ES stats later. NT out.',
+    notes: 'Globex Sunday 4:00 PM MT open. NQ/ES AMT later (nq_es_auction inbox). CL/PL Tori 4h. NT out. Fills not live.',
   },
   options: {
     venue: 'research_note',
@@ -145,7 +145,7 @@ function edgeSnapshot(config) {
     assetBooks: cfg.assetBooks,
     frozenWindows: cfg.frozenWindows,
     weekly: 'npm run paper:weekly writes backend/reports/weekly.md — named edge, OOS, regime mix, anomaly flags, one experiment slot',
-    researchBoard: 'GET /research/board — books matrix, next-to-explore (status queue), and OOS vs journal honesty. Never a fake setup ranking. Never live-eligible from this.',
+    researchBoard: 'GET /research/board — books matrix, session clocks, next-to-explore (status queue), and OOS vs journal honesty. Never a fake setup ranking. Never live-eligible from this.',
     honesty: board.honesty,
     nextToExplore: board.nextToExplore,
     experimentSlot: board.experimentSlot,
