@@ -4,7 +4,7 @@ Research runtime for **exploring US equity strategies**. Alpaca **paper** is the
 
 The loop is self-directed: file a hypothesis → persist candles and context (news, analysis, macro) → paper-trade the idea → journal the “why” → review OOS → keep, change, or kill. Doubling capital is a **measurement**, not a promotion gate. Walk-forward out-of-sample results are the gate. That is how this repo avoids fitting noise.
 
-Strategy (facet budget, four books, Oct–Nov 2025 holdout, weekly edge): [docs/STRATEGY.md](docs/STRATEGY.md). Venue split (Alpaca paper / Robinhood MCP / Rithmic stub / **NinjaTrader out**): [docs/VENUES.md](docs/VENUES.md). Grokbot + Slack while this stack is running: [docs/GROKBOT.md](docs/GROKBOT.md).
+Strategy (facet budget, books, Oct–Nov 2025 holdout, weekly edge): [docs/STRATEGY.md](docs/STRATEGY.md). Research ledger (next-to-explore, Drive pointers): [docs/RESEARCH.md](docs/RESEARCH.md). Venue split (Alpaca paper / Robinhood MCP / Rithmic stub / **NinjaTrader out**): [docs/VENUES.md](docs/VENUES.md). Grokbot + Slack while this stack is running: [docs/GROKBOT.md](docs/GROKBOT.md).
 
 ## Intent
 
@@ -118,10 +118,11 @@ Borrowed (non-binding) ideas from [wstrat_candlemaster](https://github.com/leif-
 | POST | `/trading/replay` | Run the paper pipeline into Postgres |
 | POST | `/trading/scan` | Signal scan without placing |
 | POST | `/trading/live/order` | Always 403 — Robinhood stub |
-| GET | `/research/edge` | Named edge, facet budget, frozen windows, asset books |
+| GET | `/research/edge` | Named edge, facet budget, frozen windows, asset books, next-to-explore |
+| GET | `/research/board` | Books matrix, next-to-explore status queue, OOS vs journal honesty (never a fake setup ranking; never live-eligible) |
 | GET | `/research/goals` | Doubling-horizon measurement (not a gate) |
 | GET/POST | `/research/events` | News / analysis / macro / indicator notes |
-| GET/POST/PATCH | `/research/ideas` | Strategy hypotheses |
+| GET/POST/PATCH | `/research/ideas` | Strategy hypotheses (+ `nextToExplore`) |
 | GET | `/research/candles` | Persisted 5m bars |
 | POST | `/research/candles/ingest` | Pull and store latest bars |
 | GET | `/agent/context` | Snapshot for Grokbot |
@@ -142,12 +143,13 @@ Covers indicator math, candle/session geometry, signal detection (including regi
 
 ```
 backend/lib/config.js      universe, facets, named edge, asset books, promotion gates
-backend/lib/schools.js     AMT labels on existing facets; optional SMC/VSA journal tags; orderflow/Gann parked
+backend/lib/schools.js     AMT labels on existing facets; optional SMC/VSA journal tags; Gann/Tori swing books; orderflow parked
 backend/lib/candle.js      Candle / Session geometry (OrderflowSession stub)
 backend/lib/regime.js      frozen Oct–Nov 2025 windows, expansion/reset/quiet
 backend/lib/validate.js    holdout metrics, anomaly_dependent
 backend/lib/goals.js       doubling-horizon math (not a gate)
-backend/lib/research.js    event/idea/candle helpers
+backend/lib/research.js    event/idea/candle helpers + next-to-explore status queue
+backend/lib/researchBoard.js  books matrix, catalog ideas, verified paper-sample honesty for GET /research/board
 backend/lib/agent.js       Grokbot context snapshot
 backend/lib/indicators.js  RSI, VWAP, opening range, relative volume
 backend/lib/signals.js     setup detectors
@@ -162,7 +164,8 @@ backend/lib/dailyReport.js Slack-markdown daily report
 backend/lib/weekly.js      weekly named-edge report
 backend/lib/pipeline.js    replay / scan / candle persist
 backend/cli.js             paper CLI (replay|scan|rank|daily|weekly)
-docs/STRATEGY.md          facet rule, four books, validation, weekly edge
+docs/STRATEGY.md          facet rule, books, validation, weekly edge
+docs/RESEARCH.md          books matrix, next-to-explore, Drive pointers
 docs/VENUES.md            venue split (NT out)
 docs/GROKBOT.md           Slack / Grokbot HTTP contract
 frontend/src/App.js       signals, P&L, setups, journal

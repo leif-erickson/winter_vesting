@@ -109,6 +109,13 @@ CREATE TABLE IF NOT EXISTS strategy_ideas (
   symbols TEXT[] NOT NULL DEFAULT '{}',
   setup_id VARCHAR(64),
   notes TEXT,
+  school VARCHAR(32),
+  book VARCHAR(64),
+  timeframe VARCHAR(16),
+  instrument_family VARCHAR(32),
+  next_action TEXT,
+  source_url TEXT,
+  track VARCHAR(32),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -143,6 +150,34 @@ async function ensureSchema(pool) {
   await pool.query(`
     ALTER TABLE trade_journal
       ADD COLUMN IF NOT EXISTS asset_class VARCHAR(16) DEFAULT 'stocks'
+  `);
+  await pool.query(`
+    ALTER TABLE strategy_ideas
+      ADD COLUMN IF NOT EXISTS school VARCHAR(32)
+  `);
+  await pool.query(`
+    ALTER TABLE strategy_ideas
+      ADD COLUMN IF NOT EXISTS book VARCHAR(64)
+  `);
+  await pool.query(`
+    ALTER TABLE strategy_ideas
+      ADD COLUMN IF NOT EXISTS timeframe VARCHAR(16)
+  `);
+  await pool.query(`
+    ALTER TABLE strategy_ideas
+      ADD COLUMN IF NOT EXISTS instrument_family VARCHAR(32)
+  `);
+  await pool.query(`
+    ALTER TABLE strategy_ideas
+      ADD COLUMN IF NOT EXISTS next_action TEXT
+  `);
+  await pool.query(`
+    ALTER TABLE strategy_ideas
+      ADD COLUMN IF NOT EXISTS source_url TEXT
+  `);
+  await pool.query(`
+    ALTER TABLE strategy_ideas
+      ADD COLUMN IF NOT EXISTS track VARCHAR(32)
   `);
   await pool.query(`
     INSERT INTO paper_account (id, starting_cash, cash, settled_cash, unsettled_cash, equity)

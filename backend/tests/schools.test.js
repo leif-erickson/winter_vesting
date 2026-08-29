@@ -11,6 +11,7 @@ const {
   VSA_TAGS,
   NON_ENTRY_NAMES,
   PARKED,
+  SWING_BOOKS,
   amtMapForFacets,
   assertAmtIsNotAFacet,
   researchTagsFrom,
@@ -70,7 +71,12 @@ describe('AMT / SMC / VSA school mapping', () => {
     assert.equal(edge.schools.smc.gateEntries, false);
     assert.equal(edge.schools.vsa.gateEntries, false);
     assert.equal(edge.schools.orderflow.status, 'parked');
-    assert.equal(edge.schools.gann.status, 'inbox_only');
+    assert.equal(edge.schools.gann.status, 'swing_book');
+    assert.equal(edge.schools.tori.status, 'swing_book');
+    assert.equal(edge.liveEligibleFromBoard, false);
+    assert.ok(Array.isArray(edge.nextToExplore));
+    assert.ok(edge.nextToExplore.length >= 1);
+    assert.equal(edge.nextToExplore.every((i) => i.liveEligible === false), true);
     const orb = edge.setups.find((s) => s.id === 'orb_breakout');
     assert.deepEqual(orb.facets, ['or_break', 'above_vwap', 'rvol']);
     assert.equal(orb.amt.or_break, 'initial_balance');
@@ -129,14 +135,28 @@ describe('AMT / SMC / VSA school mapping', () => {
     }
   });
 
-  it('parks orderflow and keeps Gann inbox-only', () => {
+  it('parks orderflow and treats Gann/Tori as swing books, not facets', () => {
     assert.equal(PARKED.orderflow.status, 'parked');
-    assert.equal(PARKED.gann.status, 'inbox_only');
+    assert.equal(PARKED.gann, undefined);
+    assert.equal(SWING_BOOKS.gann.status, 'swing_book');
+    assert.equal(SWING_BOOKS.tori.status, 'swing_book');
+    assert.equal(SWING_BOOKS.gann.gateEntries, false);
+    assert.equal(SWING_BOOKS.tori.gateEntries, false);
     assert.throws(() => new OrderflowSession(), (err) => err.code === 'NOT_IMPLEMENTED');
     assert.throws(() => OrderflowSession.fromCandles(), (err) => err.code === 'NOT_IMPLEMENTED');
     const snap = schoolSnapshot(SETUPS);
     assert.match(snap.orderflow.note, /NOT_IMPLEMENTED/);
-    assert.match(snap.gann.note, /inbox-only/);
+    assert.match(snap.gann.note, /not Square of 9/);
+    assert.match(snap.tori.note, /4H workhorse/);
+    for (const setup of SETUPS) {
+      assert.equal(setup.facets.includes('gann'), false, `${setup.id} must not facet gann`);
+      assert.equal(setup.facets.includes('tori'), false, `${setup.id} must not facet tori`);
+    }
+    assert.equal(NON_ENTRY_NAMES.includes('gann'), true);
+    assert.equal(NON_ENTRY_NAMES.includes('tori'), true);
+    assert.equal(NON_ENTRY_NAMES.includes('brooks'), true);
+    assert.equal(snap.brooks.status, 'later_slot');
+    assert.equal(snap.ict_smc.status, 'later_es_nq');
   });
 
   it('detectors never mention SMC/VSA tags as conditions', () => {
@@ -151,5 +171,7 @@ describe('AMT / SMC / VSA school mapping', () => {
     assert.doesNotMatch(detectors, /no_demand/);
     assert.doesNotMatch(detectors, /\bfvg\b/);
     assert.doesNotMatch(detectors, /initial_balance/);
+    assert.doesNotMatch(src, /\bgann\b/i);
+    assert.doesNotMatch(src, /\btori\b/i);
   });
 });

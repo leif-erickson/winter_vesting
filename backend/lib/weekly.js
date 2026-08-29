@@ -44,7 +44,7 @@ function formatWeeklyEdgeReport({
     '*Weekly edge maintenance*',
     `• *Named edge:* ${namedEdge}`,
     '• *Maintain by:* same 2–5 facets; change where it may fire (family/regime); one experiment slot; do not add facets because the week was green.',
-    '• *AMT map:* 15m OR → initial_balance; VWAP → value; rvol → participation. SMC/VSA are journal tags only (not confirms). Orderflow parked. Gann inbox-only.',
+    '• *AMT map:* 15m OR → initial_balance; VWAP → value; rvol → participation. SMC/VSA are journal tags only (not confirms). Orderflow parked. Gann/Tori are swing books, not 5m facets. One school_book per slot.',
     `• *Regime mix this sample:* expansion=${regimes.expansion} reset=${regimes.reset} quiet=${regimes.quiet}`,
     `• *Frozen-window P&L share:* ${money(frozenPnl)} of ${money(allPnl)} (Oct–Nov 2025 holdout must not be the whole story)`,
     '',

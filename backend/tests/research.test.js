@@ -40,6 +40,8 @@ describe('research events / ideas / candles', () => {
     assert.equal(row.status, 'inbox');
     assert.equal(row.source, 'slack');
     assert.equal(row.slack_ts, '1710000000.000100');
+    assert.equal(row.school, null);
+    assert.equal(row.book, null);
     const updated = await store.updateIdea(row.id, { status: 'exploring' });
     assert.equal(updated.status, 'exploring');
   });
@@ -82,13 +84,54 @@ describe('research events / ideas / candles', () => {
     assert.equal(ctx.schools.amt.gateEntries, false);
     assert.equal(ctx.schools.smc.gateEntries, false);
     assert.equal(ctx.schools.orderflow.status, 'parked');
-    assert.equal(ctx.schools.gann.status, 'inbox_only');
-    assert.match(ctx.howToContribute.doNot, /SMC\/VSA/);
+    assert.equal(ctx.schools.gann.status, 'swing_book');
+    assert.equal(ctx.schools.tori.status, 'swing_book');
+    assert.equal(ctx.liveEligibleFromBoard, false);
+    assert.equal(ctx.setupRanking, null);
+    assert.equal(ctx.honesty.journal.label, 'unmeasured');
+    assert.equal(ctx.honesty.oos.orbBreakout.n, 2);
+    assert.equal(ctx.honesty.inventedRanking, false);
+    assert.match(ctx.howToContribute.board, /OOS vs journal/);
+    assert.match(ctx.howToContribute.board, /Never a fake setup ranking/);
+    assert.ok(ctx.nextToExplore.length >= 1);
+    assert.equal(ctx.nextToExplore.every((i) => i.liveEligible === false), true);
+    assert.match(ctx.howToContribute.board, /\/research\/board/);
+    assert.match(ctx.howToContribute.doNot, /school_books/);
     assert.ok(ctx.frozenWindows.length >= 2);
     assert.equal(ctx.assetBooks.stocks.venue, 'alpaca_paper');
     assert.ok(ctx.openIdeas.length >= 1);
     assert.match(ctx.howToContribute.idea, /\/agent\/ideas/);
     assert.match(ctx.howToContribute.edge, /\/research\/edge/);
     assert.match(ctx.howToContribute.doNot, /live Robinhood/);
+  });
+
+  it('persists optional ledger fields without breaking old ideas', async () => {
+    const store = createMemoryStore();
+    const idea = normalizeIdea({
+      title: 'Gann swing book',
+      hypothesis: 'Unpark Gann as a swing book, not a 5m facet.',
+      source: 'ui',
+      school: 'gann',
+      book: 'gann_swing',
+      timeframe: 'swing',
+      instrumentFamily: 'stocks',
+      nextAction: 'specify',
+      sourceUrl: 'https://drive.google.com/drive/folders/1nyq_yaY-vvcZiS5pJxHDjAlHhI7jnbf9',
+    });
+    const row = await store.insertIdea(idea);
+    assert.equal(row.school, 'gann');
+    assert.equal(row.book, 'gann_swing');
+    assert.equal(row.timeframe, 'swing');
+    assert.equal(row.instrument_family, 'stocks');
+    assert.equal(row.next_action, 'specify');
+    assert.equal(row.track, 'tia_gann_swing');
+    assert.ok(row.source_url.includes('1nyq_yaY-vvcZiS5pJxHDjAlHhI7jnbf9'));
+    const patched = await store.updateIdea(row.id, {
+      status: 'exploring',
+      nextAction: 'paper_forward',
+    });
+    assert.equal(patched.status, 'exploring');
+    assert.equal(patched.next_action, 'paper_forward');
+    assert.equal(patched.book, 'gann_swing');
   });
 });

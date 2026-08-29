@@ -27,7 +27,7 @@ Live orders never originate from this API. `/trading/live/order` stays 403.
 1. **Read state** (after `docker compose up` or `npm start`):
    `GET http://localhost:5000/agent/context`
    Returns account, named edge, asset books, frozen Oct–Nov 2025 windows, OOS setups, recent journal, events, open ideas, candle stats, and the doubling-horizon measurement (`goals.isPromotionGate` is always false).
-   Also: `GET /research/edge` (no body) for the edge statement + facet budget + AMT/SMC/VSA/orderflow school map (labels and parked items, not new confirms).
+   Also: `GET /research/edge` (no body) for the edge statement + facet budget + AMT/SMC/VSA/orderflow school map (labels and parked items, not new confirms) plus `nextToExplore`. `GET /research/board` is the books matrix, next-to-explore status queue, and OOS vs journal honesty. Never a fake setup ranking. Never live-eligible from that queue.
 2. **File a Slack idea** (do not trade it):
    `POST http://localhost:5000/agent/ideas`
    ```json
@@ -55,7 +55,7 @@ Live orders never originate from this API. `/trading/live/order` stays 403.
    ```
    Store **URL + short note**. Do not scrape paywalled full text into Postgres.
 4. **Persist candles** so techniques can be re-run: `POST /research/candles/ingest`. Replay already writes 5m bars into `candle_bars`.
-5. **Weekly edge:** `GET /research/edge` then, after replay, `npm run paper:weekly`. One experiment slot from `openIdeas`. Do not add facets because last week was green. Frozen windows are holdouts — if a setup only works in Sep–Oct 2025 it is `anomaly_dependent`, not live-eligible. AMT labels (`initial_balance` / `value` / `participation`) are names for the existing three auction facets. SMC/VSA journal tags are optional ranking notes, not confirms. Orderflow stays parked (`OrderflowSession` → `NOT_IMPLEMENTED`). Gann stays inbox-only.
+5. **Weekly edge:** `GET /research/edge` then, after replay, `npm run paper:weekly`. One experiment slot (`school_book`, currently `amt`). Do not add facets because last week was green. Frozen windows are holdouts — if a setup only works in Sep–Oct 2025 it is `anomaly_dependent`, not live-eligible. AMT labels (`initial_balance` / `value` / `participation`) are names for the existing three auction facets. SMC/VSA journal tags are optional ranking notes, not confirms. Orderflow stays parked (`OrderflowSession` → `NOT_IMPLEMENTED`). Gann (D/W) and Tori (4h) are swing books, not 5m facets. Next-to-explore: `GET /research/board`.
 
 If Grokbot is not on the same machine, point it at the host LAN IP and port 5000. Set `AGENT_TOKEN` in `backend/.env` and send `Authorization: Bearer …` or `X-Agent-Token`.
 
@@ -65,7 +65,10 @@ If Grokbot is not on the same machine, point it at the host LAN IP and port 5000
 - Treat `GOAL_DOUBLE_DAYS` or a doubling curve as a reason to size up.
 - Promote a setup off in-sample P&amp;L. Only walk-forward OOS gates **and** a passing holdout (not `anomaly_dependent`) in `backend/lib/config.js` / `backend/lib/validate.js` mark `live-eligible`, and even then fills stay paper until you confirm a **specific** MCP order.
 - Turn SMC/VSA `researchTags` or a parked orderflow stub into extra entry confirms. The named edge stays 15m OR + VWAP + rvol.
-- File Gann math as a live facet. Gann stays inbox-only.
+- File Gann or Tori math as a 5m live facet. They are swing books. Do not implement detectors from this pass.
+- Stack two `school_book`s in one experiment slot, compute SQN on n&lt;30, size live from SQN, or use a confluence score (TradePad 0–14).
+- Promote live-eligible from `GET /research/board` / `nextToExplore`.
+- Invent a setup ranking (there is no `GET /trading/rankings`). Do not treat journal fills as OOS or as “most-profitable.”
 
 ## Slack wiring
 
@@ -73,4 +76,4 @@ Outbound already exists: the weekday Action can POST `backend/reports/latest.md`
 
 Inbound is Grokbot’s job: listen on the research channel, classify “idea” vs “event”, POST here, reply in-thread with the idea id and a reminder that it is paper until replay + journal review.
 
-Named edge, four books, AMT label map, parked orderflow/Gann, and the Oct–Nov 2025 holdout: [STRATEGY.md](STRATEGY.md).
+Named edge, four books, AMT label map, Gann/Tori swing books, parked orderflow, and the Oct–Nov 2025 holdout: [STRATEGY.md](STRATEGY.md). Research ledger: [RESEARCH.md](RESEARCH.md).

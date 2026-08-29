@@ -35,7 +35,7 @@ describe('weekly edge report', () => {
     assert.match(md, /Frozen-window P&L/);
     assert.match(md, /initial_balance/);
     assert.match(md, /journal tags only/);
-    assert.match(md, /Gann inbox-only/);
+    assert.match(md, /Gann\/Tori are swing books/);
   });
 
   it('surfaces one exploring idea as the experiment slot', async () => {

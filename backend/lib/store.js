@@ -1,6 +1,7 @@
 'use strict';
 
 const { SETUPS } = require('./config');
+const { toIdeaRow, ideaLedgerPatch } = require('./research');
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -197,20 +198,8 @@ function createMemoryStore() {
       return clone(rows.slice(0, limit));
     },
     async insertIdea(idea) {
-      const row = {
-        id: ideaId,
-        title: idea.title,
-        hypothesis: idea.hypothesis,
-        source: idea.source || 'manual',
-        slack_channel: idea.slackChannel || idea.slack_channel || null,
-        slack_ts: idea.slackTs || idea.slack_ts || null,
-        status: idea.status || 'inbox',
-        symbols: idea.symbols || [],
-        setup_id: idea.setupId || idea.setup_id || null,
-        notes: idea.notes || '',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
+      const now = new Date().toISOString();
+      const row = toIdeaRow(idea, { id: ideaId, created_at: now, updated_at: now });
       ideaId += 1;
       state.ideas.unshift(row);
       return clone(row);
@@ -223,9 +212,7 @@ function createMemoryStore() {
     async updateIdea(id, patch) {
       const row = state.ideas.find((i) => i.id === Number(id));
       if (!row) throw new Error(`idea ${id} not found`);
-      if (patch.status) row.status = patch.status;
-      if (patch.notes != null) row.notes = patch.notes;
-      if (patch.setupId || patch.setup_id) row.setup_id = patch.setupId || patch.setup_id;
+      Object.assign(row, ideaLedgerPatch(patch));
       row.updated_at = new Date().toISOString();
       return clone(row);
     },
@@ -448,20 +435,29 @@ function createPgStore(pool) {
       return rows;
     },
     async insertIdea(idea) {
+      const row = toIdeaRow(idea);
       const { rows } = await pool.query(
         `INSERT INTO strategy_ideas
-          (title, hypothesis, source, slack_channel, slack_ts, status, symbols, setup_id, notes)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+          (title, hypothesis, source, slack_channel, slack_ts, status, symbols, setup_id, notes,
+           school, book, track, timeframe, instrument_family, next_action, source_url)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
         [
-          idea.title,
-          idea.hypothesis,
-          idea.source || 'manual',
-          idea.slackChannel || idea.slack_channel || null,
-          idea.slackTs || idea.slack_ts || null,
-          idea.status || 'inbox',
-          idea.symbols || [],
-          idea.setupId || idea.setup_id || null,
-          idea.notes || '',
+          row.title,
+          row.hypothesis,
+          row.source,
+          row.slack_channel,
+          row.slack_ts,
+          row.status,
+          row.symbols,
+          row.setup_id,
+          row.notes,
+          row.school,
+          row.book,
+          row.track,
+          row.timeframe,
+          row.instrument_family,
+          row.next_action,
+          row.source_url,
         ]
       );
       return rows[0];
@@ -481,14 +477,34 @@ function createPgStore(pool) {
       return rows;
     },
     async updateIdea(id, patch) {
+      const ledger = ideaLedgerPatch(patch);
       const { rows } = await pool.query(
         `UPDATE strategy_ideas
          SET status=COALESCE($2, status),
              notes=COALESCE($3, notes),
              setup_id=COALESCE($4, setup_id),
+             school=COALESCE($5, school),
+             book=COALESCE($6, book),
+             track=COALESCE($7, track),
+             timeframe=COALESCE($8, timeframe),
+             instrument_family=COALESCE($9, instrument_family),
+             next_action=COALESCE($10, next_action),
+             source_url=COALESCE($11, source_url),
              updated_at=NOW()
          WHERE id=$1 RETURNING *`,
-        [id, patch.status || null, patch.notes != null ? patch.notes : null, patch.setupId || patch.setup_id || null]
+        [
+          id,
+          ledger.status || null,
+          ledger.notes != null ? ledger.notes : null,
+          ledger.setup_id || null,
+          ledger.school !== undefined ? ledger.school : null,
+          ledger.book !== undefined ? ledger.book : null,
+          ledger.track !== undefined ? ledger.track : null,
+          ledger.timeframe !== undefined ? ledger.timeframe : null,
+          ledger.instrument_family !== undefined ? ledger.instrument_family : null,
+          ledger.next_action !== undefined ? ledger.next_action : null,
+          ledger.source_url !== undefined ? ledger.source_url : null,
+        ]
       );
       if (!rows[0]) throw new Error(`idea ${id} not found`);
       return rows[0];

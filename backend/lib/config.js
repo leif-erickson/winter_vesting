@@ -2,6 +2,7 @@
 
 const { FROZEN_ANOMALY_WINDOWS } = require('./regime');
 const { assertAmtIsNotAFacet, schoolSnapshot } = require('./schools');
+const { boardSnapshot } = require('./researchBoard');
 
 const MAX_FACETS = 5;
 
@@ -127,6 +128,7 @@ function assertFacetBudget(setups, max = MAX_FACETS) {
 function edgeSnapshot(config) {
   const cfg = config || loadConfig();
   const schools = cfg.schools || schoolSnapshot(cfg.setups);
+  const board = boardSnapshot({ ideas: cfg.ideas || [], setups: cfg.setups });
   return {
     namedEdge: cfg.namedEdge,
     maxFacets: cfg.maxFacets,
@@ -143,6 +145,13 @@ function edgeSnapshot(config) {
     assetBooks: cfg.assetBooks,
     frozenWindows: cfg.frozenWindows,
     weekly: 'npm run paper:weekly writes backend/reports/weekly.md — named edge, OOS, regime mix, anomaly flags, one experiment slot',
+    researchBoard: 'GET /research/board — books matrix, next-to-explore (status queue), and OOS vs journal honesty. Never a fake setup ranking. Never live-eligible from this.',
+    honesty: board.honesty,
+    nextToExplore: board.nextToExplore,
+    experimentSlot: board.experimentSlot,
+    schoolBooks: board.schoolBooks,
+    nextActions: board.nextActions,
+    liveEligibleFromBoard: false,
   };
 }
 

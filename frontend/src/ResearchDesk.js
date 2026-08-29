@@ -11,10 +11,19 @@ function pct(value, digits = 2) {
   return `${Number(value).toFixed(digits)}%`;
 }
 
+function signedMoney(value, digits = 2) {
+  if (value == null || Number.isNaN(Number(value))) return '—';
+  const n = Number(value);
+  const sign = n > 0 ? '+' : '';
+  return `${sign}$${n.toFixed(digits)}`;
+}
+
 function ResearchDesk({ api }) {
   const [goals, setGoals] = useState(null);
   const [events, setEvents] = useState([]);
   const [ideas, setIdeas] = useState([]);
+  const [nextToExplore, setNextToExplore] = useState([]);
+  const [honesty, setHonesty] = useState(null);
   const [candles, setCandles] = useState({ bars: 0, symbols: [] });
   const [edge, setEdge] = useState(null);
   const [error, setError] = useState('');
@@ -28,16 +37,19 @@ function ResearchDesk({ api }) {
 
   const refresh = useCallback(async () => {
     try {
-      const [g, e, i, c, edgeRes] = await Promise.all([
+      const [g, e, i, c, edgeRes, boardRes] = await Promise.all([
         axios.get(`${api}/research/goals`),
         axios.get(`${api}/research/events?limit=20`),
         axios.get(`${api}/research/ideas?limit=20`),
         axios.get(`${api}/research/candles/stats`),
         axios.get(`${api}/research/edge`),
+        axios.get(`${api}/research/board`),
       ]);
       setGoals(g.data);
       setEvents(e.data.events || []);
       setIdeas(i.data.ideas || []);
+      setNextToExplore(boardRes.data.nextToExplore || i.data.nextToExplore || []);
+      setHonesty(boardRes.data.honesty || edgeRes.data.honesty || null);
       setCandles(c.data);
       setEdge(edgeRes.data);
       setError('');
@@ -102,8 +114,11 @@ function ResearchDesk({ api }) {
         <div className="hint">
           Max {edge?.maxFacets ?? 5} facets.
           AMT labels on the named edge: initial_balance (OR) · value (VWAP) · participation (rvol).
-          SMC/VSA are journal tags only; orderflow parked; Gann inbox-only.
+          SMC/VSA are journal tags only; orderflow parked; Gann/Tori are swing books, not 5m facets.
           Frozen holdouts: {(edge?.frozenWindows || []).map((w) => `${w.start}–${w.end} (${w.regime})`).join('; ') || 'Oct–Nov 2025'}.
+          Frozen 2025 windows are outside the Aug 2026 paper sample — anomaly share is not scored here.
+          Only orb_breakout has an OOS path so far — fewer than 8 OOS trades is unmeasured, not most profitable.
+          Journal fills are unmeasured, not OOS. Do not invent a ranking.
           One experiment slot from ideas below — do not add facets because last week was green.
         </div>
       </section>
@@ -123,6 +138,120 @@ function ResearchDesk({ api }) {
           <button onClick={ingestCandles} disabled={busy}>{busy ? 'Working…' : 'Ingest latest bars'}</button>
         </article>
       </div>
+
+      <section>
+        <h2>Honesty (OOS vs journal)</h2>
+        <p className="hint">
+          Verified {honesty?.sample?.window?.start || '2026-08-10'} → {honesty?.sample?.window?.end || '2026-08-28'} paper replay (leif API).
+          Live off. {honesty?.note || 'Journal is unmeasured, not most-profitable. Do not invent a ranking.'}
+        </p>
+        <div className="cards">
+          <article>
+            <h3>Account</h3>
+            <p>
+              Start {money(honesty?.sample?.account?.startingCash ?? 100)}
+              {' · '}equity ${honesty?.sample?.account?.equity ?? '—'}
+              {' · '}realized {signedMoney(honesty?.sample?.account?.realizedPnl, 4)}
+            </p>
+            <p>{honesty?.sample?.account?.closedTrades ?? 21} closed paper trades · regime {honesty?.sample?.regime?.featuresRegime || 'quiet'}</p>
+            <p className="hint">{honesty?.sample?.candles?.bars ?? 9332} 5m bars on {(honesty?.sample?.candles?.universe || []).join(' ') || 'AMZN ARKK BRK.B MSFT NVDA PLTR SOFI TSLA'}.</p>
+            <p className="hint">{honesty?.gaps?.qqq?.note || 'QQQ is in HIGH_BETA but not in the candle universe. Gap only — not added this pass.'}</p>
+          </article>
+          <article>
+            <h3>OOS (GET /trading/setups)</h3>
+            <p>
+              {honesty?.oos?.onlySetupWithOosPath || 'orb_breakout'} n={honesty?.oos?.orbBreakout?.n ?? 2}
+              {' · '}WR {honesty?.oos?.orbBreakout?.winRate != null ? `${honesty.oos.orbBreakout.winRate * 100}%` : '50%'}
+              {' · '}gross {signedMoney(honesty?.oos?.orbBreakout?.grossPnl ?? 0.637, 3)}
+            </p>
+            <p className="hint">
+              Need {honesty?.oos?.need ?? 8} OOS trades. Status {honesty?.oos?.orbBreakout?.label || 'unmeasured'}.
+              All six setups {honesty?.oos?.allSetupsStatus || 'paper'}, live_eligible false.
+              Pooled across symbols — not a setup×symbol matrix.
+              {honesty?.rankingsEndpoint?.endpoint || 'GET /trading/rankings'} is {honesty?.rankingsEndpoint?.status ?? 404}.
+            </p>
+            <ul>
+              {(honesty?.oos?.orbBreakout?.legs || []).map((leg) => (
+                <li key={`${leg.symbol}-${leg.sessionDate}`}>{leg.symbol} {leg.sessionDate} {signedMoney(leg.pnl, 3)}</li>
+              ))}
+            </ul>
+          </article>
+        </div>
+        <h3>Journal fills (not OOS, unmeasured)</h3>
+        <p className="hint">{honesty?.journal?.note || 'Not a ranking. Catalog / universe order, not P&L.'}</p>
+        <div className="cards">
+          <article>
+            <table>
+              <thead>
+                <tr>
+                  <th>Setup</th>
+                  <th>n</th>
+                  <th>journal P&amp;L</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(honesty?.journal?.bySetup || []).map((row) => (
+                  <tr key={row.id}>
+                    <td>{row.journalLabel || row.id}{row.note ? ` (${row.note})` : ''}</td>
+                    <td>{row.n}</td>
+                    <td>{signedMoney(row.pnl)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </article>
+          <article>
+            <table>
+              <thead>
+                <tr>
+                  <th>Symbol</th>
+                  <th>n</th>
+                  <th>journal P&amp;L</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(honesty?.journal?.bySymbol || []).map((row) => (
+                  <tr key={row.symbol}>
+                    <td>{row.symbol}</td>
+                    <td>{row.n != null ? row.n : '—'}</td>
+                    <td>{signedMoney(row.pnl)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <h2>Next to explore</h2>
+        <p className="hint">
+          Status queue: exploring, then paper, then inbox — not a P&amp;L ranking. This list never marks live-eligible.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Idea</th>
+              <th>Book</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {nextToExplore.map((idea, idx) => (
+              <tr key={idea.id || idea.title}>
+                <td>{idx + 1}</td>
+                <td>
+                  <div>{idea.title}</div>
+                  <div className="hint">{idea.nextAction || idea.hypothesis}</div>
+                </td>
+                <td>{idea.book || idea.school || '—'}</td>
+                <td><span className="tag paper">{idea.status}</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
 
       <section>
         <h2>Strategy ideas</h2>
