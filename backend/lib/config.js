@@ -97,6 +97,9 @@ const PROMOTION_GATES = {
   maxDrawdown: 20,
 };
 
+/** Calendar-day Alpaca historical window for paper:replay. ~90d ≈ 60 RTH sessions. */
+const DEFAULT_REPLAY_DAYS = 90;
+
 function parseUniverse(raw) {
   if (!raw) return [...DEFAULT_UNIVERSE];
   return raw.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean);
@@ -184,6 +187,7 @@ function loadConfig(env = process.env) {
     frozenWindows: FROZEN_ANOMALY_WINDOWS,
     variantsTried: Number(env.VARIANTS_TRIED || setups.length),
     goalDoubleDays: Math.max(1, Number(env.GOAL_DOUBLE_DAYS || 365)),
+    replayDays: DEFAULT_REPLAY_DAYS,
   };
 }
 
@@ -196,6 +200,7 @@ module.exports = {
   HIGH_BETA,
   SLOW_LARGE_CAP,
   ASSET_BOOKS,
+  DEFAULT_REPLAY_DAYS,
   loadConfig,
   parseUniverse,
   setupIdsForSymbol,

@@ -67,6 +67,10 @@ ICT/SMC and orderflow are later ES/NQ + L2 books, not the default US-cash book.
 
 Walk-forward OOS (5 sessions in / 2 out) is **necessary and not sufficient**.
 
+`npm run paper:rank` is **read + metrics only**: it ranks from existing `trade_journal` (and leaves `candle_bars` untouched), writes `setup_metrics`, and never `DELETE`s fills or bars. `npm run paper:replay` **appends / upserts** journal rows and candles by default. Use `npm run paper:replay -- --reset` only for a rare full rebuild (`store.resetPaper`).
+
+OOS sample growth is **historical Alpaca lookback** (default `DEFAULT_REPLAY_DAYS` = 90 calendar days of paper IEX 5m bars on the Winter equity universe) **plus** weekday `paper:daily` fills. Daily is fill telemetry for the latest completed RTH session, not the only way to reach n≥8. Stay inside Alpaca equities. Skip/embargo NFP/CPI/FOMC as already specified. Do not invent CME futures bars. Do not add facets to the named 15m OR + VWAP + rvol book.
+
 1. Purged gap: embargo 1 session around frozen event dates so a train fold’s last bar is not the same event as the test fold’s first bar.
 2. Frozen anomaly windows — **never fit params here**:
    - `2025-09-01` → `2025-10-31` — Nasdaq expansion (late-Oct highs, AI/tech leadership).

@@ -95,6 +95,30 @@ describe('journal', () => {
     assert.equal(updated.broker_order_id, 'ord-paper-1');
   });
 
+  it('upserts the same symbol/ts/setup/side without allocating a new id', async () => {
+    const store = createMemoryStore();
+    const payload = {
+      symbol: 'SOFI',
+      ts: '2024-03-04T10:00:00-04:00',
+      side: 'BUY',
+      setupId: 'orb_breakout',
+      features: { sessionDate: '2024-03-04' },
+      reason: 'first',
+      paperPrice: 10.4,
+      size: 2,
+      notional: 20.8,
+      status: 'open',
+      mode: 'paper',
+    };
+    const first = await store.upsertTrade(payload);
+    const second = await store.upsertTrade({ ...payload, reason: 'updated', paperPrice: 10.5, notional: 21 });
+    assert.equal(second.id, first.id);
+    const listed = await store.listTrades({ limit: 10 });
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0].reason, 'updated');
+    assert.equal(Number(listed[0].paper_price), 10.5);
+  });
+
   it('defaults new setups to paper and not live-eligible', async () => {
     const store = createMemoryStore();
     const setups = await store.listSetups();

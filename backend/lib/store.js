@@ -7,6 +7,44 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function tradeSetupId(trade) {
+  return trade.setupId ?? trade.setup_id;
+}
+
+function sameTradeIdentity(row, trade) {
+  return (
+    row.symbol === trade.symbol
+    && String(row.ts) === String(trade.ts)
+    && row.setup_id === tradeSetupId(trade)
+    && row.side === trade.side
+  );
+}
+
+function memoryTradeRow(trade, id) {
+  return {
+    id,
+    symbol: trade.symbol,
+    ts: trade.ts,
+    side: trade.side,
+    setup_id: tradeSetupId(trade),
+    features: trade.features || {},
+    reason: trade.reason || '',
+    paper_price: trade.paperPrice,
+    size: trade.size,
+    notional: trade.notional,
+    stop_price: trade.stop ?? null,
+    target_price: trade.target ?? null,
+    status: trade.status || 'open',
+    exit_ts: trade.exitTs ?? null,
+    exit_price: trade.exitPrice ?? null,
+    pnl: trade.pnl ?? null,
+    outcome: trade.outcome ?? null,
+    mode: trade.mode || 'paper',
+    broker_order_id: trade.brokerOrderId ?? trade.broker_order_id ?? null,
+    asset_class: trade.assetClass || trade.asset_class || 'stocks',
+  };
+}
+
 function defaultAccountRow() {
   return {
     id: 1,
@@ -98,31 +136,23 @@ function createMemoryStore() {
       return clone(row);
     },
     async insertTrade(trade) {
-      const row = {
-        id: tradeId,
-        symbol: trade.symbol,
-        ts: trade.ts,
-        side: trade.side,
-        setup_id: trade.setupId,
-        features: trade.features || {},
-        reason: trade.reason || '',
-        paper_price: trade.paperPrice,
-        size: trade.size,
-        notional: trade.notional,
-        stop_price: trade.stop ?? null,
-        target_price: trade.target ?? null,
-        status: trade.status || 'open',
-        exit_ts: trade.exitTs ?? null,
-        exit_price: trade.exitPrice ?? null,
-        pnl: trade.pnl ?? null,
-        outcome: trade.outcome ?? null,
-        mode: trade.mode || 'paper',
-        broker_order_id: trade.brokerOrderId ?? trade.broker_order_id ?? null,
-        asset_class: trade.assetClass || trade.asset_class || 'stocks',
-      };
+      const row = memoryTradeRow(trade, tradeId);
       tradeId += 1;
       state.trades.push(row);
       return clone(row);
+    },
+    async upsertTrade(trade) {
+      const found = state.trades.find((row) => sameTradeIdentity(row, trade));
+      if (!found) return this.insertTrade(trade);
+      const keptId = found.id;
+      Object.assign(found, memoryTradeRow(trade, keptId), {
+        exit_ts: trade.exitTs ?? found.exit_ts ?? null,
+        exit_price: trade.exitPrice ?? found.exit_price ?? null,
+        pnl: trade.pnl ?? found.pnl ?? null,
+        outcome: trade.outcome ?? found.outcome ?? null,
+        broker_order_id: trade.brokerOrderId ?? trade.broker_order_id ?? found.broker_order_id ?? null,
+      });
+      return clone(found);
     },
     async closeTrade(id, { exitTs, exitPrice, pnl, outcome, status = 'closed' }) {
       const row = state.trades.find((t) => t.id === id);
@@ -335,6 +365,37 @@ function createPgStore(pool) {
           trade.exitPrice ?? null,
           trade.pnl ?? null,
           trade.outcome ?? null,
+          trade.mode || 'paper',
+          trade.brokerOrderId ?? trade.broker_order_id ?? null,
+          trade.assetClass || trade.asset_class || 'stocks',
+        ]
+      );
+      return rows[0];
+    },
+    async upsertTrade(trade) {
+      const { rows: existing } = await pool.query(
+        `SELECT * FROM trade_journal
+         WHERE symbol=$1 AND ts=$2::timestamptz AND setup_id=$3 AND side=$4
+         ORDER BY id ASC LIMIT 1`,
+        [trade.symbol, trade.ts, tradeSetupId(trade), trade.side]
+      );
+      if (!existing[0]) return this.insertTrade(trade);
+      const { rows } = await pool.query(
+        `UPDATE trade_journal
+         SET features=$2, reason=$3, paper_price=$4, size=$5, notional=$6,
+             stop_price=$7, target_price=$8, status=$9, mode=$10,
+             broker_order_id=COALESCE($11, broker_order_id), asset_class=$12
+         WHERE id=$1 RETURNING *`,
+        [
+          existing[0].id,
+          JSON.stringify(trade.features || {}),
+          trade.reason || '',
+          trade.paperPrice,
+          trade.size,
+          trade.notional,
+          trade.stop ?? null,
+          trade.target ?? null,
+          trade.status || 'open',
           trade.mode || 'paper',
           trade.brokerOrderId ?? trade.broker_order_id ?? null,
           trade.assetClass || trade.asset_class || 'stocks',

@@ -152,6 +152,19 @@ async function ensureSchema(pool) {
       ADD COLUMN IF NOT EXISTS asset_class VARCHAR(16) DEFAULT 'stocks'
   `);
   await pool.query(`
+    DELETE FROM trade_journal a
+    USING trade_journal b
+    WHERE a.id > b.id
+      AND a.symbol = b.symbol
+      AND a.ts = b.ts
+      AND a.setup_id = b.setup_id
+      AND a.side = b.side
+  `);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS trade_journal_identity_idx
+    ON trade_journal (symbol, ts, setup_id, side)
+  `);
+  await pool.query(`
     ALTER TABLE strategy_ideas
       ADD COLUMN IF NOT EXISTS school VARCHAR(32)
   `);

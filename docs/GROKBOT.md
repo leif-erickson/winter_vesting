@@ -54,7 +54,7 @@ Live orders never originate from this API. `/trading/live/order` stays 403.
    }
    ```
    Store **URL + short note**. Do not scrape paywalled full text into Postgres.
-4. **Persist candles** so techniques can be re-run: `POST /research/candles/ingest`. Replay already writes 5m bars into `candle_bars`.
+4. **Persist candles** so techniques can be re-run: `POST /research/candles/ingest`. Replay upserts 5m bars into `candle_bars` and **appends / upserts** `trade_journal` unless you pass `--reset`. `npm run paper:rank` does not wipe the journal or bars — it only recomputes walk-forward from what is already stored and writes `setup_metrics`. Grow OOS n with a longer Alpaca historical lookback (default 90 calendar days) plus daily paper fills; daily is telemetry, not the only path to n≥8.
 5. **Weekly edge:** `GET /research/edge` then, after replay, `npm run paper:weekly`. One experiment slot (`school_book`, currently `amt`). Do not add facets because last week was green. Frozen windows are holdouts — if a setup only works in Sep–Oct 2025 it is `anomaly_dependent`, not live-eligible. AMT labels (`initial_balance` / `value` / `participation`) are names for the existing three auction facets. SMC/VSA journal tags are optional ranking notes, not confirms. Orderflow stays parked (`OrderflowSession` → `NOT_IMPLEMENTED`). Gann (D/W) and Tori (4h) are swing books, not 5m facets. Next-to-explore: `GET /research/board`.
 
 If Grokbot is not on the same machine, point it at the host LAN IP and port 5000. Set `AGENT_TOKEN` in `backend/.env` and send `Authorization: Bearer …` or `X-Agent-Token`.
@@ -69,6 +69,7 @@ If Grokbot is not on the same machine, point it at the host LAN IP and port 5000
 - Stack two `school_book`s in one experiment slot, compute SQN on n&lt;30, size live from SQN, or use a confluence score (TradePad 0–14).
 - Promote live-eligible from `GET /research/board` / `nextToExplore`.
 - Invent a setup ranking (there is no `GET /trading/rankings`). Do not treat journal fills as OOS or as “most-profitable.”
+- Run `paper:rank` or default `paper:replay` expecting a wiped journal. Rank never deletes fills. Replay truncates only with an explicit `--reset`.
 
 ## Slack wiring
 

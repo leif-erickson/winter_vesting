@@ -71,7 +71,7 @@ function TradingDashboard() {
   const runReplay = async () => {
     setBusy(true);
     try {
-      await axios.post(`${API}/trading/replay`, { days: 20 });
+      await axios.post(`${API}/trading/replay`);
       await refresh();
     } catch (err) {
       setError(err.response?.data?.error || err.message);
@@ -102,7 +102,7 @@ function TradingDashboard() {
       {error ? <p className="error">{error}</p> : null}
 
       <div className="actions">
-        <button onClick={runReplay} disabled={busy}>{busy ? 'Running…' : 'Replay paper (20d)'}</button>
+        <button onClick={runReplay} disabled={busy}>{busy ? 'Running…' : 'Replay paper (append)'}</button>
         <button onClick={runScan} disabled={busy}>Scan latest session</button>
         <button onClick={refresh} disabled={busy}>Refresh</button>
       </div>

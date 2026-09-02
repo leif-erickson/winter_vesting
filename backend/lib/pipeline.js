@@ -12,7 +12,9 @@ const {
 } = require('./paper');
 const { rankAndPromote } = require('./rank');
 const { flattenBars } = require('./research');
-const { setupIdsForSymbol } = require('./config');
+const { setupIdsForSymbol, DEFAULT_REPLAY_DAYS } = require('./config');
+
+const JOURNAL_LIST_LIMIT = 10000;
 
 function allSessionDates(barsBySymbol) {
   const dates = new Set();
@@ -127,6 +129,10 @@ async function simulateSession({
     barsByTs.set(key, bar);
   }
 
+  const writeTrade = typeof store.upsertTrade === 'function'
+    ? store.upsertTrade.bind(store)
+    : store.insertTrade.bind(store);
+
   const minutes = [...new Set(dayBars.map((b) => b.minuteOfDay))].sort((a, b) => a - b);
   for (const minute of minutes) {
     for (const position of [...open]) {
@@ -174,7 +180,7 @@ async function simulateSession({
         timeInForce: 'day',
         paperPrice: signal.paperPrice,
       });
-      const row = await store.insertTrade({
+      const row = await writeTrade({
         symbol: signal.symbol,
         ts: signal.ts,
         side: signal.side,
@@ -236,11 +242,20 @@ async function persistCandles(store, barsBySymbol, timeframe = '5m') {
   return store.upsertCandles(bars);
 }
 
-async function runReplay({ store, barsClient, config, days = 20, persist = true, orderMirror = null }) {
-  const barsBySymbol = await barsClient.loadBars(config.universe, { days });
+async function runReplay({
+  store,
+  barsClient,
+  config,
+  days,
+  persist = true,
+  reset = false,
+  orderMirror = null,
+}) {
+  const lookbackDays = Number(days) > 0 ? Number(days) : DEFAULT_REPLAY_DAYS;
+  const barsBySymbol = await barsClient.loadBars(config.universe, { days: lookbackDays });
   const timeframe = `${config.barMinutes || 5}m`;
   await persistCandles(store, barsBySymbol, timeframe);
-  if (persist && store.resetPaper) {
+  if (persist && reset && typeof store.resetPaper === 'function') {
     await store.resetPaper(config.startingCash);
   }
   let account = createAccount(config.startingCash);
@@ -261,7 +276,7 @@ async function runReplay({ store, barsClient, config, days = 20, persist = true,
   }
 
   if (persist) await store.saveAccount(account);
-  const trades = await store.listTrades({ limit: 2000 });
+  const trades = await store.listTrades({ limit: JOURNAL_LIST_LIMIT });
   const rankings = await rankAndPromote(store, {
     setups: config.setups,
     gates: config.promotion,
@@ -273,6 +288,8 @@ async function runReplay({ store, barsClient, config, days = 20, persist = true,
   return {
     source: Object.values(barsBySymbol)[0]?.[0]?.synthetic ? 'synthetic' : 'alpaca',
     days: dates.length,
+    lookbackDays,
+    reset: Boolean(reset),
     universe: config.universe,
     signals: allSignals.length,
     trades: trades.length,
@@ -280,6 +297,30 @@ async function runReplay({ store, barsClient, config, days = 20, persist = true,
     rankings,
     todaySignals: allSignals.filter((s) => s.sessionDate === dates.at(-1)),
     liveEnabled: false,
+  };
+}
+
+/**
+ * Walk-forward from the existing journal. Writes setup_metrics only.
+ * Never deletes trade_journal or candle_bars.
+ */
+async function runRank({ store, config }) {
+  if (!store || typeof store.listTrades !== 'function') {
+    throw new Error('rank requires a journal store (Postgres portfolio_db)');
+  }
+  const trades = await store.listTrades({ limit: JOURNAL_LIST_LIMIT });
+  const rankings = await rankAndPromote(store, {
+    setups: config.setups,
+    gates: config.promotion,
+    trades,
+    variantsTried: config.variantsTried,
+    windows: config.frozenWindows,
+  });
+  return {
+    trades: trades.length,
+    rankings,
+    liveEnabled: false,
+    journalPreserved: true,
   };
 }
 
@@ -321,9 +362,11 @@ async function scanLatestSession({ store, barsClient, config, persist = false })
 
 module.exports = {
   runReplay,
+  runRank,
   scanLatestSession,
   simulateSession,
   allSessionDates,
   barsForDate,
   persistCandles,
+  JOURNAL_LIST_LIMIT,
 };

@@ -57,9 +57,10 @@ pgAdmin: host `db` (or `localhost` from the host), user `user`, password `passwo
 
 ```bash
 cd backend
-npm run paper:replay    # 20 sessions, persist candles, journal trades, rank/promote
+npm run paper:replay    # ~90 calendar days of Alpaca history; append/upsert journal + candles
+npm run paper:replay -- --reset   # rare full rebuild (wipes trade_journal)
 npm run paper:scan      # latest-session signals + "why this trade"
-npm run paper:rank      # walk-forward OOS table
+npm run paper:rank      # walk-forward OOS from existing journal (does not delete fills)
 npm run paper:daily     # latest completed RTH session on live Alpaca data (fail-closed)
 npm run paper:weekly    # named edge, OOS, anomaly flags, one experiment slot
 ```
@@ -100,7 +101,7 @@ Weekdays after the US cash close, [`.github/workflows/paper-daily.yml`](.github/
    - `impulse_hold` — continuation in an `expansion` regime only
    - `roundtrip_fade` — SELL signal in a `reset` regime; the cash book does not short
 3. **Risk.** Model the account as **$100 cash, no options**. A single name is capped at 25% of that ($25), using fractional shares. At most one open position. Daily-loss kill switch. Flatten before the close. **Sold proceeds are unsettled (T+1) and not reusable the same session.**
-4. **Journal.** Every paper fill is written to `trade_journal` (symbol, timestamp, side, features/reason, paper price, size, `asset_class`, outcome when known).
+4. **Journal.** Every paper fill is written to `trade_journal` (symbol, timestamp, side, features/reason, paper price, size, `asset_class`, outcome when known). Default replay and daily persist **append / upsert** (identity: symbol + ts + setup + side). `paper:rank` never deletes the journal. Use `--reset` only to rebuild. Sample growth is historical Alpaca lookback plus daily paper fills.
 5. **Context.** `research_events` holds news / analysis / macro / indicator notes. `strategy_ideas` holds Slack/Grokbot/UI hypotheses until you paper them or reject them.
 6. **Learning.** Rolling walk-forward (5 sessions in-sample / 2 out-of-sample) **and** holdout on frozen Oct–Nov 2025 windows. A setup becomes **live-eligible** only if it clears `PROMOTION_GATES` and is not `anomaly_dependent`. Everything still executes as paper.
 

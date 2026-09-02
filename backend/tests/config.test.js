@@ -9,6 +9,7 @@ const {
   setupIdsForSymbol,
   assertFacetBudget,
   ASSET_BOOKS,
+  DEFAULT_REPLAY_DAYS,
 } = require('../lib/config');
 const { FACET_FIELDS, MAX_DETECTOR_FACETS } = require('../lib/signals');
 const { NON_ENTRY_NAMES } = require('../lib/schools');
@@ -70,5 +71,12 @@ describe('facet budget / instrument families / books', () => {
     assert.equal(ASSET_BOOKS.crypto.venue, 'ccxt_paper');
     assert.match(ASSET_BOOKS.crypto.notes, /Weekend\/24h/);
     assert.match(ASSET_BOOKS.crypto.notes, /BTC\/ETH/);
+  });
+
+  it('uses a longer Alpaca historical lookback than a two-week window', () => {
+    const config = loadConfig();
+    assert.equal(DEFAULT_REPLAY_DAYS, 90);
+    assert.equal(config.replayDays, 90);
+    assert.ok(DEFAULT_REPLAY_DAYS > 20);
   });
 });
