@@ -2,6 +2,8 @@
 
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { loadConfig, SETUPS, setupIdsForSymbol, assertFacetBudget } = require('../lib/config');
 const { DETECTORS } = require('../lib/signals');
 const { LIVE_SWITCH } = require('../lib/robinhood');
@@ -147,5 +149,10 @@ describe('stock_orb30_5m book (idea 8)', () => {
     const thin = gradeVariant([]);
     assert.equal(thin.liveEligible, false);
     assert.equal(thin.oos.label, 'unmeasured');
+    const md = fs.readFileSync(path.join(__dirname, '../../docs/ORB30.md'), 'utf8');
+    assert.match(md, /liveEligible=false/);
+    assert.match(md, /unmeasured/);
+    assert.match(md, /Did not beat the named 15m null|did not beat the named 15m null/i);
+    assert.doesNotMatch(md, /most-profitable/);
   });
 });

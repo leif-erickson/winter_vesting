@@ -111,7 +111,7 @@ Rank: **exploring**, then **paper**, then **inbox**. Never promote live-eligible
 2. `track=tia_gann_swing` stocks (`specify`, exploring) — mechanical swing-chart; not Square of 9; no detector this pass.
 3. `track=tori_trendline` (`specify`, exploring) — 4H energy/metals futures; official ToriTradez/TradeZella only; never stacked on AMT or Gann.
 4. AMT 5m cash auction (`run_wf`, paper) — weekday US-cash slot, **not demoted**. OOS **n=2** (unmeasured); skip NFP/CPI/FOMC already paper.
-5. `stock_orb30_5m` (`run_wf`, paper) — idea **8** on the leif journal. Separate 30m-OR / 5m book (not a facet on the named 15m OR+VWAP+rvol edge). Lunch blackout + NFP/CPI/FOMC skip. `liveEligible=false` unless OOS n≥8 and not `anomaly_dependent`.
+5. `stock_orb30_5m` (`run_wf`, paper) — idea **8** on the leif journal. Separate 30m-OR / 5m book (not a facet on the named 15m OR+VWAP+rvol edge). Lunch blackout + NFP/CPI/FOMC skip. `liveEligible=false`. Synthetic-tape walk-forward did **not** beat the named 15m null on OOS E[R]; market OOS **unmeasured** (no Alpaca keys here). See [ORB30.md](ORB30.md).
 6. `nq_es_auction` (`specify`, inbox) — Sunday 4:00 PM MT Globex open queue. No Globex OR detector this pass. Unmeasured; no OOS.
 7. AVGO earnings skip 2026-09-02 (`paper_forward`, inbox).
 8. Brooks 5m Always-In / H2 (`specify`, inbox) — later day-trade slot.

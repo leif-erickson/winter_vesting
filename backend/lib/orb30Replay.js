@@ -293,18 +293,16 @@ function interpret(variants, nullBook) {
 }
 
 async function loadOrb30Bars(barsClient, universe, { days, env = process.env } = {}) {
-  if (barsClient && typeof barsClient.loadBars === 'function' && hasAlpacaKeys(env)) {
+  if (barsClient && typeof barsClient.loadBars === 'function') {
     try {
       const barsBySymbol = await barsClient.loadBars(universe, { days });
       const all = Object.values(barsBySymbol || {}).flat();
-      if (all.length && !all.every((b) => b.synthetic)) {
-        return { barsBySymbol, source: 'alpaca' };
-      }
       if (all.length) {
-        return { barsBySymbol, source: 'synthetic' };
+        const alpaca = hasAlpacaKeys(env) && all.some((b) => !b.synthetic);
+        return { barsBySymbol, source: alpaca ? 'alpaca' : 'synthetic' };
       }
     } catch (err) {
-      console.warn(`orb30 Alpaca load failed (${err.message}); using orb30 synthetic tape`);
+      console.warn(`orb30 bars load failed (${err.message}); using orb30 synthetic tape`);
     }
   }
   const sessions = Math.max(14, Math.min(60, Math.round((Number(days) || 90) * 5 / 7)));
