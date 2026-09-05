@@ -13,6 +13,7 @@ const { runReplay, runRank, scanLatestSession } = require('./lib/pipeline');
 const { isLiveEnabled } = require('./lib/robinhood');
 const { runDailyCli } = require('./lib/daily');
 const { runWeeklyCli } = require('./lib/weekly');
+const { runOrb30Replay } = require('./lib/orb30Replay');
 
 dotenv.config();
 
@@ -97,10 +98,16 @@ async function main(argv = process.argv) {
       printRank(result.rankings);
       console.log(`\nJournal rows=${result.trades} (rank is metrics-only; trade_journal and candle_bars were not deleted)`);
       console.log(`Live enabled: ${isLiveEnabled()}`);
+    } else if (cmd === 'orb30') {
+      const { days } = parsePaperArgs(argv);
+      const barsClient = makeBars();
+      const result = await runOrb30Replay({ store, barsClient, config, days });
+      printOrb30(result);
     } else {
-      console.error('Usage: node cli.js [replay|scan|rank|daily|weekly] [days] [--reset]');
+      console.error('Usage: node cli.js [replay|scan|rank|daily|weekly|orb30] [days] [--reset]');
       console.error('  replay  append/upsert journal from Alpaca history. Use --reset only to rebuild.');
       console.error('  rank    walk-forward from existing trade_journal. Does not delete fills or bars.');
+      console.error('  orb30   paper walk-forward of the 30m-OR / 5m book (idea 8). Isolated journal; live off.');
       process.exitCode = 1;
     }
   } finally {
@@ -132,6 +139,13 @@ function printScan(result) {
   for (const s of result.signals) {
     console.log(`  ${s.symbol} ${s.setupId} ${s.side} @ ${Number(s.paperPrice).toFixed(2)} — ${s.reason}`);
   }
+}
+
+function printOrb30(result) {
+  console.log(result.markdown);
+  if (result.reportFile) console.error(`Wrote ${result.reportFile}`);
+  console.log(`Live enabled: ${isLiveEnabled()}`);
+  console.log(`liveEligible=${result.liveEligible} idea=${result.ideaId} book=${result.book} source=${result.source}`);
 }
 
 function printRank(rankings) {

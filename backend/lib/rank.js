@@ -47,6 +47,31 @@ function sessionOf(trade) {
   return trade.sessionDate || trade.features?.sessionDate || (trade.ts || '').slice(0, 10);
 }
 
+function tradeRMultiple(trade) {
+  const entry = Number(trade.paperPrice ?? trade.paper_price);
+  const stop = Number(trade.stop ?? trade.stop_price);
+  const exit = Number(trade.exitPrice ?? trade.exit_price);
+  if (![entry, stop, exit].every(Number.isFinite)) return null;
+  const risk = entry - stop;
+  if (!(risk > 0)) return null;
+  return (exit - entry) / risk;
+}
+
+function summarizeR(trades) {
+  const closed = (trades || []).filter((t) => t.status === 'closed' || t.pnl != null);
+  const rs = closed.map(tradeRMultiple).filter((r) => r != null);
+  const wins = rs.filter((r) => r > 0).length;
+  const sum = rs.reduce((a, b) => a + b, 0);
+  return {
+    n: rs.length,
+    wins,
+    winRate: rs.length ? wins / rs.length : 0,
+    expectancyR: rs.length ? sum / rs.length : null,
+    sumR: rs.length ? sum : 0,
+    unmeasured: rs.length < 8,
+  };
+}
+
 function rankSetup(trades, { trainSize = 5, testSize = 2, embargo = embargoDates() } = {}) {
   const dates = [...new Set(trades.map(sessionOf).filter(Boolean))].sort();
   const folds = walkForwardFolds(dates, trainSize, testSize, { embargo });
@@ -141,6 +166,8 @@ module.exports = {
   walkForwardFolds,
   rankSetup,
   sessionOf,
+  tradeRMultiple,
+  summarizeR,
   clearsPromotionGate,
   promotionDecision,
   rankAndPromote,

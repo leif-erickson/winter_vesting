@@ -3,6 +3,7 @@
 const { FROZEN_ANOMALY_WINDOWS } = require('./regime');
 const { assertAmtIsNotAFacet, schoolSnapshot } = require('./schools');
 const { boardSnapshot } = require('./researchBoard');
+const { ORB30_SETUPS, ORB30_BOOK_ID } = require('./orb30');
 
 const MAX_FACETS = 5;
 
@@ -108,13 +109,13 @@ function parseUniverse(raw) {
 function setupIdsForSymbol(symbol, setups = SETUPS) {
   const id = String(symbol || '').toUpperCase();
   const slow = new Set(SLOW_LARGE_CAP);
-  if (slow.has(id)) {
-    return setups
-      .filter((s) => ['vwap_rsi_reversion', 'bar_reversal', 'impulse_hold', 'roundtrip_fade'].includes(s.id))
-      .map((s) => s.id);
-  }
-  return setups
-    .filter((s) => ['orb_breakout', 'orb_retest', 'bar_reversal', 'impulse_hold', 'roundtrip_fade'].includes(s.id))
+  const named = new Set(
+    slow.has(id)
+      ? ['vwap_rsi_reversion', 'bar_reversal', 'impulse_hold', 'roundtrip_fade']
+      : ['orb_breakout', 'orb_retest', 'bar_reversal', 'impulse_hold', 'roundtrip_fade']
+  );
+  return (setups || [])
+    .filter((s) => named.has(s.id) && s.book !== ORB30_BOOK_ID && !String(s.id).startsWith('orb30_'))
     .map((s) => s.id);
 }
 
@@ -188,6 +189,12 @@ function loadConfig(env = process.env) {
     variantsTried: Number(env.VARIANTS_TRIED || setups.length),
     goalDoubleDays: Math.max(1, Number(env.GOAL_DOUBLE_DAYS || 365)),
     replayDays: DEFAULT_REPLAY_DAYS,
+    skipMacroDays: false,
+    orb30: {
+      book: ORB30_BOOK_ID,
+      setups: ORB30_SETUPS.map((s) => ({ ...s })),
+      liveEligible: false,
+    },
   };
 }
 
@@ -201,6 +208,7 @@ module.exports = {
   SLOW_LARGE_CAP,
   ASSET_BOOKS,
   DEFAULT_REPLAY_DAYS,
+  ORB30_BOOK_ID,
   loadConfig,
   parseUniverse,
   setupIdsForSymbol,

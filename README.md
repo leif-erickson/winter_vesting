@@ -63,6 +63,7 @@ npm run paper:scan      # latest-session signals + "why this trade"
 npm run paper:rank      # walk-forward OOS from existing journal (does not delete fills)
 npm run paper:daily     # latest completed RTH session on live Alpaca data (fail-closed)
 npm run paper:weekly    # named edge, OOS, anomaly flags, one experiment slot
+npm run paper:orb30     # idea 8: 30m-OR / 5m book walk-forward (isolated journal; live off)
 ```
 
 Default universe (override with `DAYTRADE_UNIVERSE`): `SOFI,BRK.B,TSLA,AMZN,ARKK,MSFT,NVDA,PLTR`.
@@ -164,7 +165,10 @@ backend/lib/daily.js       weekday live-data paper runner
 backend/lib/dailyReport.js Slack-markdown daily report
 backend/lib/weekly.js      weekly named-edge report
 backend/lib/pipeline.js    replay / scan / candle persist
-backend/cli.js             paper CLI (replay|scan|rank|daily|weekly)
+backend/cli.js             paper CLI (replay|scan|rank|daily|weekly|orb30)
+backend/lib/orb30.js       30m-OR / 5m book (idea 8; not a named-edge facet)
+backend/lib/orb30Replay.js walk-forward grid: SR vs Fib × 1R–3R
+backend/lib/newsSkip.js    shared NFP/CPI/FOMC skip dates
 docs/STRATEGY.md          facet rule, books, validation, weekly edge
 docs/RESEARCH.md          books matrix, next-to-explore, Drive pointers
 docs/VENUES.md            venue split (NT out)

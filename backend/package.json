@@ -12,7 +12,8 @@
     "paper:scan": "node cli.js scan",
     "paper:rank": "node cli.js rank",
     "paper:daily": "node cli.js daily",
-    "paper:weekly": "node cli.js weekly"
+    "paper:weekly": "node cli.js weekly",
+    "paper:orb30": "node cli.js orb30"
   },
   "dependencies": {
     "alpaca-trade-api": "npm:@alpacahq/alpaca-trade-api@^3.1.3",

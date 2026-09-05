@@ -88,6 +88,7 @@ Weekday US-cash slot: **`amt`** (`stock_auction_5m`) — **not demoted**. This w
 | Book | school_book | Kind | Family | TF | Venue | Status | News | next_action |
 |---|---|---|---|---|---|---|---|---|
 | `stock_auction_5m` | amt | mechanical | high_beta | 5m | alpaca_paper | paper | skip NFP/CPI/FOMC | `run_wf` |
+| `stock_orb30_5m` | amt | mechanical | winter_watchlist | 5m | alpaca_paper | paper | skip NFP/CPI/FOMC; lunch 11:30–13:30 ET | `run_wf` |
 | `crypto_gann_swing` | gann | pattern | btc_eth | D/W | ccxt_paper | exploring | may run event mornings; JH 2026-08-28 weekend overlay | `specify` |
 | `gann_swing` | gann | pattern | stocks | D/W | alpaca_paper | exploring | may run event mornings | `specify` |
 | `tori_trendlines` | tori | pattern | energy_metals (CL/PL/GC futures, not US cash) | 4h min | alpaca_paper | exploring | may run event mornings | `specify` |
@@ -110,12 +111,13 @@ Rank: **exploring**, then **paper**, then **inbox**. Never promote live-eligible
 2. `track=tia_gann_swing` stocks (`specify`, exploring) — mechanical swing-chart; not Square of 9; no detector this pass.
 3. `track=tori_trendline` (`specify`, exploring) — 4H energy/metals futures; official ToriTradez/TradeZella only; never stacked on AMT or Gann.
 4. AMT 5m cash auction (`run_wf`, paper) — weekday US-cash slot, **not demoted**. OOS **n=2** (unmeasured); skip NFP/CPI/FOMC already paper.
-5. `nq_es_auction` (`specify`, inbox) — Sunday 4:00 PM MT Globex open queue. No Globex OR detector this pass. Unmeasured; no OOS.
-6. AVGO earnings skip 2026-09-02 (`paper_forward`, inbox).
-7. Brooks 5m Always-In / H2 (`specify`, inbox) — later day-trade slot.
-8. TIA Wyckoff / Elliott / time overlay (`specify`, inbox) — pointers only.
-9. R-multiples as journal unit (`paper_forward`, inbox) — not live size.
-10. ICT/SMC + orderflow (`specify`) — later ES/NQ + L2.
+5. `stock_orb30_5m` (`run_wf`, paper) — idea **8** on the leif journal. Separate 30m-OR / 5m book (not a facet on the named 15m OR+VWAP+rvol edge). Lunch blackout + NFP/CPI/FOMC skip. `liveEligible=false` unless OOS n≥8 and not `anomaly_dependent`.
+6. `nq_es_auction` (`specify`, inbox) — Sunday 4:00 PM MT Globex open queue. No Globex OR detector this pass. Unmeasured; no OOS.
+7. AVGO earnings skip 2026-09-02 (`paper_forward`, inbox).
+8. Brooks 5m Always-In / H2 (`specify`, inbox) — later day-trade slot.
+9. TIA Wyckoff / Elliott / time overlay (`specify`, inbox) — pointers only.
+10. R-multiples as journal unit (`paper_forward`, inbox) — not live size.
+11. ICT/SMC + orderflow (`specify`) — later ES/NQ + L2.
 
 ## Ledger fields
 
@@ -184,7 +186,7 @@ Events already filed (optional skip / 5m auction skip; Gann/Tori higher-TF may s
 - **CPI** 2026-09-11 — 5m auction skip
 - **FOMC** 2026-09-16 — 5m auction skip
 
-- **5m auction / Brooks later:** skip NFP/CPI/FOMC mornings (auction skip already paper).
+- **5m auction / Brooks later / `stock_orb30_5m`:** skip NFP/CPI/FOMC mornings (auction skip already paper; orb30 also skips lunch 11:30–13:30 ET).
 - **Gann D/W (`tia_gann_swing`) and Tori 4H (`tori_trendline`):** may still run those days; crypto Gann may run event mornings.
 - **All US-cash names:** single-name earnings skip (AVGO 2026-09-02 AC).
 
