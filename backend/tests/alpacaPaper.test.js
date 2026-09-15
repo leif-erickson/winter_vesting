@@ -8,6 +8,7 @@ const {
   isLiveBaseUrl,
   assertPaperOnly,
   isPaperSubmitEnabled,
+  makePaperClientOrderId,
   createAlpacaPaperClient,
   submitPaperOrder,
   fetchPaperAccountSnapshot,
@@ -21,8 +22,23 @@ function FakeAlpaca(opts) {
   this.createOrder = async (body) => {
     this.orders.push(body);
     FakeAlpaca.orders.push(body);
-    return { id: 'ord-paper-1' };
+    if (FakeAlpaca.duplicateOnce) {
+      FakeAlpaca.duplicateOnce = false;
+      const err = new Error('client_order_id must be unique');
+      err.statusCode = 409;
+      throw err;
+    }
+    return {
+      id: 'ord-paper-1',
+      client_order_id: body.client_order_id || 'cid-paper-1',
+      status: 'accepted',
+    };
   };
+  this.getOrderByClientOrderId = async (clientOrderId) => ({
+    id: 'ord-existing',
+    client_order_id: clientOrderId,
+    status: 'filled',
+  });
   this.getAccount = async () => ({
     equity: '100000',
     cash: '99000',
@@ -35,6 +51,7 @@ function resetFake() {
   FakeAlpaca.constructed = 0;
   FakeAlpaca.last = null;
   FakeAlpaca.orders = [];
+  FakeAlpaca.duplicateOnce = false;
 }
 
 describe('Alpaca paper adapter', () => {
@@ -93,10 +110,18 @@ describe('Alpaca paper adapter', () => {
     assert.equal(client.opts.paper, true);
   });
 
-  it('defaults ALPACA_SUBMIT_PAPER off and does not call createOrder', async () => {
+  it('defaults paper broker POSTs on (unset flags)', () => {
+    assert.equal(isPaperSubmitEnabled({}), true);
+    assert.equal(isPaperSubmitEnabled({ ALPACA_SUBMIT_PAPER: '' }), true);
+    assert.equal(isPaperSubmitEnabled({ PAPER_BROKER_ORDERS: 'true' }), true);
+    assert.equal(isPaperSubmitEnabled({ ALPACA_SUBMIT_PAPER: '1' }), true);
+  });
+
+  it('opts out of paper POSTs when PAPER_BROKER_ORDERS or ALPACA_SUBMIT_PAPER is false', async () => {
     resetFake();
-    assert.equal(isPaperSubmitEnabled({}), false);
     assert.equal(isPaperSubmitEnabled({ ALPACA_SUBMIT_PAPER: '0' }), false);
+    assert.equal(isPaperSubmitEnabled({ PAPER_BROKER_ORDERS: 'false' }), false);
+    assert.equal(isPaperSubmitEnabled({ PAPER_BROKER_ORDERS: 'true', ALPACA_SUBMIT_PAPER: '0' }), false);
     const client = createAlpacaPaperClient({
       env: { ALPACA_API_KEY: 'PKTEST', ALPACA_SECRET_KEY: 'secret' },
       Alpaca: FakeAlpaca,
@@ -104,14 +129,14 @@ describe('Alpaca paper adapter', () => {
     const result = await submitPaperOrder(
       client,
       { symbol: 'SOFI', side: 'buy', qty: 1 },
-      { env: {} }
+      { env: { PAPER_BROKER_ORDERS: 'false' } }
     );
     assert.equal(result.submitted, false);
     assert.equal(result.reason, 'submit_disabled');
     assert.equal(client.orders.length, 0);
   });
 
-  it('submits to the paper API only when ALPACA_SUBMIT_PAPER=1', async () => {
+  it('POSTs to the paper API by default and records broker + client order ids', async () => {
     resetFake();
     const client = createAlpacaPaperClient({
       env: { ALPACA_API_KEY: 'PKTEST', ALPACA_SECRET_KEY: 'secret' },
@@ -119,24 +144,80 @@ describe('Alpaca paper adapter', () => {
     });
     const result = await submitPaperOrder(
       client,
-      { symbol: 'SOFI', side: 'buy', qty: 0.5, type: 'market' },
-      { env: { ALPACA_SUBMIT_PAPER: '1' } }
+      {
+        symbol: 'SOFI',
+        side: 'buy',
+        qty: 0.5,
+        type: 'market',
+        paperPrice: 12.4,
+        clientOrderId: 'wv-test-sofi-buy',
+      },
+      { env: {} }
     );
     assert.equal(result.submitted, true);
     assert.equal(result.brokerOrderId, 'ord-paper-1');
+    assert.equal(result.clientOrderId, 'wv-test-sofi-buy');
     assert.equal(result.paper, true);
+    assert.equal(result.venue, 'alpaca-paper');
     assert.equal(client.orders[0].symbol, 'SOFI');
-    assert.equal(client.orders[0].type, 'market');
+    assert.equal(client.orders[0].type, 'limit');
+    assert.equal(client.orders[0].limit_price, '12.4');
+    assert.equal(client.orders[0].extended_hours, true);
+    assert.equal(client.orders[0].client_order_id, 'wv-test-sofi-buy');
+    assert.equal(FakeAlpaca.last.baseUrl, PAPER_BASE_URL);
   });
 
-  it('refuses submit when ALPACA_LIVE is set even if submit flag is on', async () => {
+  it('treats a duplicate client_order_id as the existing paper order', async () => {
+    resetFake();
+    FakeAlpaca.duplicateOnce = true;
+    const client = createAlpacaPaperClient({
+      env: { ALPACA_API_KEY: 'PKTEST', ALPACA_SECRET_KEY: 'secret' },
+      Alpaca: FakeAlpaca,
+    });
+    const result = await submitPaperOrder(
+      client,
+      { symbol: 'SOFI', side: 'buy', qty: 1, paperPrice: 10, clientOrderId: 'wv-dup' },
+      { env: { PAPER_BROKER_ORDERS: 'true' } }
+    );
+    assert.equal(result.submitted, true);
+    assert.equal(result.duplicate, true);
+    assert.equal(result.brokerOrderId, 'ord-existing');
+    assert.equal(result.clientOrderId, 'wv-dup');
+  });
+
+  it('builds a stable client_order_id within Alpaca\'s 48-char cap', () => {
+    const a = makePaperClientOrderId({
+      symbol: 'SOFI',
+      ts: '2026-09-15T10:00:00-04:00',
+      setupId: 'orb_breakout',
+      side: 'BUY',
+    });
+    const b = makePaperClientOrderId({
+      symbol: 'SOFI',
+      ts: '2026-09-15T10:00:00-04:00',
+      setupId: 'orb_breakout',
+      side: 'buy',
+    });
+    const other = makePaperClientOrderId({
+      symbol: 'SOFI',
+      ts: '2026-09-15T10:00:00-04:00',
+      setupId: 'orb_breakout',
+      side: 'sell',
+    });
+    assert.equal(a, b);
+    assert.notEqual(a, other);
+    assert.ok(a.startsWith('wv-'));
+    assert.ok(a.length <= 48);
+  });
+
+  it('refuses submit when ALPACA_LIVE is set even if paper submit flags are on', async () => {
     resetFake();
     const client = { createOrder: async () => ({ id: 'should-not-run' }) };
     await assert.rejects(
       () => submitPaperOrder(
         client,
         { symbol: 'SOFI', side: 'buy', qty: 1 },
-        { env: { ALPACA_SUBMIT_PAPER: '1', ALPACA_LIVE: '1' } }
+        { env: { ALPACA_SUBMIT_PAPER: '1', PAPER_BROKER_ORDERS: 'true', ALPACA_LIVE: '1' } }
       ),
       (err) => err.code === 'ALPACA_LIVE_REFUSED'
     );

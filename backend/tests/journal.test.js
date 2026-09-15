@@ -91,8 +91,10 @@ describe('journal', () => {
       mode: 'paper',
     });
     assert.equal(opened.broker_order_id, null);
-    const updated = await store.setBrokerOrderId(opened.id, 'ord-paper-1');
+    assert.equal(opened.client_order_id, null);
+    const updated = await store.setBrokerOrderId(opened.id, 'ord-paper-1', 'wv-cid-1');
     assert.equal(updated.broker_order_id, 'ord-paper-1');
+    assert.equal(updated.client_order_id, 'wv-cid-1');
   });
 
   it('upserts the same symbol/ts/setup/side without allocating a new id', async () => {
