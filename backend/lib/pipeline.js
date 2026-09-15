@@ -13,6 +13,7 @@ const {
 const { rankAndPromote } = require('./rank');
 const { flattenBars } = require('./research');
 const { setupIdsForSymbol, DEFAULT_REPLAY_DAYS } = require('./config');
+const { isAuctionSkipDay } = require('./newsSkip');
 
 const JOURNAL_LIST_LIMIT = 10000;
 
@@ -97,10 +98,14 @@ async function simulateSession({
   sessionDate,
   config,
   orderMirror = null,
+  collectSignals = null,
 }) {
   account = maybeNewSession(account, sessionDate);
   const open = [];
   const sessionSignals = [];
+  if (config.skipMacroDays && isAuctionSkipDay(sessionDate)) {
+    return { account, sessionSignals };
+  }
 
   const dayBars = [];
   for (const symbol of config.universe) {
@@ -114,12 +119,19 @@ async function simulateSession({
     const session = barsForDate(symbolBars, sessionDate);
     if (!session.length) continue;
     const prior = priorSessions(symbolBars, sessionDate, config.rvolLookbackSessions);
-    const { signals } = signalsForSymbol(session, {
-      priorSessions: prior,
-      config,
-      setupIds: setupIdsForSymbol(symbol, config.setups),
-    });
-    sessionSignals.push(...signals);
+    const { signals } = collectSignals
+      ? await collectSignals({
+        symbol,
+        session,
+        prior,
+        config,
+      })
+      : signalsForSymbol(session, {
+        priorSessions: prior,
+        config,
+        setupIds: setupIdsForSymbol(symbol, config.setups),
+      });
+    sessionSignals.push(...(signals || []));
   }
   sessionSignals.sort((a, b) => a.minuteOfDay - b.minuteOfDay);
 

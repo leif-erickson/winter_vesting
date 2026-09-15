@@ -1,6 +1,8 @@
 'use strict';
 
 const { rankNextToExplore, publicIdea, NEXT_ACTIONS, SCHOOL_BOOKS, TRACKS } = require('./research');
+const { ORB30_BOOK, ORB30_IDEA_ID, ORB30_BOOK_ID } = require('./orb30');
+const { filedAuctionSkipDates } = require('./newsSkip');
 
 const MIN_OOS_TRADES = 8;
 const DECLARED_ORB_OOS_N = 2;
@@ -117,6 +119,21 @@ const RESEARCH_BOOKS = [
     newsOverlay: 'skip_nfp_cpi_fomc',
     nextAction: 'run_wf',
     note: 'Named 5m day-trade edge. OR=IB, VWAP=value, rvol=participation. Weekday US-cash experiment slot — not demoted.',
+  },
+  {
+    id: ORB30_BOOK_ID,
+    school: ORB30_BOOK.school,
+    schoolBook: ORB30_BOOK.schoolBook,
+    kind: ORB30_BOOK.kind,
+    instrumentFamily: ORB30_BOOK.instrumentFamily,
+    timeframe: ORB30_BOOK.timeframe,
+    venue: ORB30_BOOK.venue,
+    status: ORB30_BOOK.status,
+    newsOverlay: ORB30_BOOK.newsOverlay,
+    nextAction: ORB30_BOOK.nextAction,
+    ideaId: ORB30_IDEA_ID,
+    liveEligible: false,
+    note: ORB30_BOOK.note,
   },
   {
     id: 'crypto_gann_swing',
@@ -572,6 +589,22 @@ const CATALOG_IDEAS = [
     sourceUrl: TORI_OFFICIAL,
     source: 'catalog',
     exploreRank: 3,
+  },
+  {
+    id: ORB30_IDEA_ID,
+    title: '30m-OR / 5m ORB book (Winter watchlist)',
+    hypothesis: 'Separate equities book: first 30 minutes is the opening range, enter on 5m, skip lunch 11:30–13:30 ET and NFP/CPI/FOMC days, flatten by cash close, few entries/day. Compare nearby S/R vs Fib stops and 1R–3R targets. Not a facet on the named 15m OR+VWAP+rvol edge. Paper only. Do not invent live eligibility.',
+    status: 'paper',
+    school: 'amt',
+    book: ORB30_BOOK_ID,
+    timeframe: '5m',
+    instrumentFamily: 'winter_watchlist',
+    nextAction: 'run_wf',
+    symbols: ['SOFI', 'BRK.B', 'TSLA', 'AMZN', 'ARKK', 'MSFT', 'NVDA', 'PLTR'],
+    source: 'catalog',
+    exploreRank: 15,
+    liveEligible: false,
+    notes: `Local leif research journal idea id ${ORB30_IDEA_ID}. Filed auction skip ${filedAuctionSkipDates().join(', ')}.`,
   },
   {
     id: 'catalog:orb-oos-honesty',

@@ -71,6 +71,8 @@ Walk-forward OOS (5 sessions in / 2 out) is **necessary and not sufficient**.
 
 OOS sample growth is **historical Alpaca lookback** (default `DEFAULT_REPLAY_DAYS` = 90 calendar days of paper IEX 5m bars on the Winter equity universe) **plus** weekday `paper:daily` fills. Daily is fill telemetry for the latest completed RTH session, not the only way to reach n≥8. Stay inside Alpaca equities. Skip/embargo NFP/CPI/FOMC as already specified. Do not invent CME futures bars. Do not add facets to the named 15m OR + VWAP + rvol book.
 
+A separate paper book `stock_orb30_5m` (idea 8) uses a **30-minute** opening range and 5m entries. It is **not** a seventh facet on this named edge. Run it with `npm run paper:orb30`. Live stays off.
+
 1. Purged gap: embargo 1 session around frozen event dates so a train fold’s last bar is not the same event as the test fold’s first bar.
 2. Frozen anomaly windows — **never fit params here**:
    - `2025-09-01` → `2025-10-31` — Nasdaq expansion (late-Oct highs, AI/tech leadership).
