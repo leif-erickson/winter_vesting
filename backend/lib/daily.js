@@ -87,6 +87,7 @@ async function runDaily({
   alpacaPaperAccount = null,
   now = new Date(),
   days = 20,
+  paperSubmitEnabled = false,
 } = {}) {
   const barsBySymbol = await barsClient.loadBars(config.universe, { days });
   assertAlpacaBars(barsBySymbol);
@@ -157,7 +158,8 @@ async function runDaily({
     namedEdge: config.namedEdge,
     regime,
     alpacaPaperAccount,
-    paperSubmitEnabled: isPaperSubmitEnabled(),
+    paperSubmitEnabled: Boolean(paperSubmitEnabled),
+    paperBroker: sim.paperBroker || null,
   };
 }
 
@@ -172,7 +174,7 @@ async function runDailyCli({
   assertDailyReady(env);
   const alpaca = createAlpacaPaperClient({ env });
   const barsClient = createBarsClient({ alpaca, env, requireAlpaca: true });
-  const alpacaPaperAccount = await fetchPaperAccountSnapshot(alpaca);
+  const paperSubmitEnabled = isPaperSubmitEnabled(env);
   const orderMirror = {
     submit: (order) => submitPaperOrder(alpaca, order, { env }),
   };
@@ -181,9 +183,10 @@ async function runDailyCli({
     barsClient,
     config,
     orderMirror,
-    alpacaPaperAccount,
     now,
+    paperSubmitEnabled,
   });
+  result.alpacaPaperAccount = await fetchPaperAccountSnapshot(alpaca);
   const report = formatDailyReport(result);
   log.log(report);
   if (writeReport) {

@@ -60,6 +60,29 @@ const FIXTURE = {
     },
   ],
   liveEnabled: false,
+  paperSubmitEnabled: true,
+  paperBroker: {
+    submitted: 2,
+    skipped: 0,
+    failed: 0,
+    duplicates: 0,
+    orders: [
+      {
+        symbol: 'SOFI',
+        side: 'buy',
+        submitted: true,
+        brokerOrderId: 'ord-paper-1',
+        clientOrderId: 'wv-cid-buy',
+      },
+      {
+        symbol: 'SOFI',
+        side: 'sell',
+        submitted: true,
+        brokerOrderId: 'ord-paper-2',
+        clientOrderId: 'wv-cid-sell',
+      },
+    ],
+  },
   alpacaPaperAccount: {
     ok: true,
     paper: true,
@@ -96,6 +119,11 @@ describe('daily paper PoC report', () => {
     assert.match(report, /Alpaca PAPER account/);
     assert.match(report, /buying power/);
     assert.match(report, /positions count=0/);
+    assert.match(report, /Alpaca paper POSTs/);
+    assert.match(report, /submitted=2/);
+    assert.match(report, /broker_order_id=`ord-paper-1`/);
+    assert.match(report, /client_order_id=`wv-cid-buy`/);
+    assert.match(report, /paper POSTs on/);
     assert.equal(FIXTURE.liveEnabled, false);
     assert.equal(isLiveEnabled(), false);
   });
@@ -168,6 +196,70 @@ describe('daily runner fail-closed', () => {
     assert.ok(result.regime);
     assert.equal(store.kind, 'memory');
     assert.equal(result.rankings, null, 'in-memory / no DB skips walk-forward');
+    assert.equal(result.paperSubmitEnabled, false);
+  });
+
+  it('runDaily POSTs paper fills through orderMirror and journals broker ids without enabling live', async () => {
+    const config = loadConfig({ PAPER_CASH: '100', DAYTRADE_UNIVERSE: 'SOFI' });
+    const store = createMemoryStore();
+    const bars = generateUniverseBars(['SOFI'], { days: 6, seed: 1 });
+    for (const bar of bars.SOFI) bar.synthetic = false;
+    const posted = [];
+    const orderMirror = {
+      submit: async (order) => {
+        posted.push(order);
+        return {
+          submitted: true,
+          brokerOrderId: `ord-${posted.length}`,
+          clientOrderId: order.clientOrderId,
+          paper: true,
+          venue: 'alpaca-paper',
+        };
+      },
+    };
+    const result = await runDaily({
+      store,
+      barsClient: { loadBars: async () => bars },
+      config,
+      orderMirror,
+      paperSubmitEnabled: true,
+      now: new Date('2026-08-28T21:00:00Z'),
+    });
+    assert.equal(result.liveEnabled, false);
+    assert.equal(result.paperSubmitEnabled, true);
+    assert.ok(posted.length >= 1, 'expected at least one paper broker POST');
+    assert.ok(posted.every((o) => o.side === 'buy' || o.side === 'sell'));
+    assert.ok(posted.every((o) => o.clientOrderId && o.clientOrderId.startsWith('wv-')));
+    const trades = await store.listTrades({ limit: 50 });
+    const withBroker = trades.filter((t) => t.broker_order_id);
+    assert.ok(withBroker.length >= 1, 'journal should record broker_order_id');
+    assert.ok(withBroker.every((t) => t.client_order_id));
+    assert.ok(result.paperBroker.submitted >= 1);
+  });
+
+  it('runDaily still refuses ALPACA_LIVE through the paper mirror', async () => {
+    const config = loadConfig({ PAPER_CASH: '100', DAYTRADE_UNIVERSE: 'SOFI' });
+    const store = createMemoryStore();
+    const bars = generateUniverseBars(['SOFI'], { days: 6, seed: 1 });
+    for (const bar of bars.SOFI) bar.synthetic = false;
+    const liveErr = new Error('Alpaca live trading is refused');
+    liveErr.code = 'ALPACA_LIVE_REFUSED';
+    const orderMirror = {
+      submit: async () => {
+        throw liveErr;
+      },
+    };
+    await assert.rejects(
+      () => runDaily({
+        store,
+        barsClient: { loadBars: async () => bars },
+        config,
+        orderMirror,
+        paperSubmitEnabled: true,
+        now: new Date('2026-08-28T21:00:00Z'),
+      }),
+      (err) => err.code === 'ALPACA_LIVE_REFUSED'
+    );
   });
 
   it('cli daily exits non-zero without Alpaca keys', () => {

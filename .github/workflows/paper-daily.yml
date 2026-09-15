@@ -29,8 +29,10 @@ jobs:
         env:
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
-          # ALPACA_SUBMIT_PAPER is intentionally unset. Local journal is the fill
-          # source of truth. Do not enable paper-order submit in CI.
+          # Paper brokerage POSTs to https://paper-api.alpaca.markets only.
+          # Live host / ALPACA_LIVE stay refused in code. Opt out: PAPER_BROKER_ORDERS=false.
+          PAPER_BROKER_ORDERS: 'true'
+          ALPACA_SUBMIT_PAPER: '1'
           TZ: America/New_York
         run: npm run paper:daily
 

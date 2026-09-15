@@ -5,8 +5,11 @@ const assert = require('node:assert/strict');
 const { loadConfig, DEFAULT_REPLAY_DAYS } = require('../lib/config');
 const { createMemoryStore } = require('../lib/store');
 const { createBarsClient } = require('../lib/bars');
-const { runReplay, runRank } = require('../lib/pipeline');
+const { runReplay, runRank, simulateSession } = require('../lib/pipeline');
 const { LIVE_SWITCH, isLiveEnabled } = require('../lib/robinhood');
+const { createAccount } = require('../lib/paper');
+const { generateUniverseBars } = require('../lib/bars');
+const { submitPaperOrder, isPaperSubmitEnabled } = require('../lib/alpacaPaper');
 
 function seedKeepTrade(store, overrides = {}) {
   return store.insertTrade({
@@ -225,5 +228,75 @@ describe('paper pipeline', () => {
     assert.equal(result.liveEnabled, false);
     assert.equal(resets.count, 0);
     assert.ok(DEFAULT_REPLAY_DAYS > 20);
+  });
+
+  it('simulateSession POSTs paper orders via mock createOrder and journals ids; live stays off', async () => {
+    const config = loadConfig({ PAPER_CASH: '100', DAYTRADE_UNIVERSE: 'SOFI' });
+    const store = createMemoryStore();
+    const barsBySymbol = generateUniverseBars(['SOFI'], { days: 6, seed: 1 });
+    const dates = [...new Set(barsBySymbol.SOFI.map((b) => b.sessionDate))].sort();
+    const sessionDate = dates.at(-1);
+    const created = [];
+    const client = {
+      createOrder: async (body) => {
+        created.push(body);
+        return { id: `ord-${created.length}`, client_order_id: body.client_order_id };
+      },
+    };
+    const orderMirror = {
+      submit: (order) => submitPaperOrder(client, order, { env: { PAPER_BROKER_ORDERS: 'true' } }),
+    };
+    const sim = await simulateSession({
+      store,
+      account: createAccount(100),
+      barsBySymbol,
+      sessionDate,
+      config,
+      orderMirror,
+    });
+    assert.equal(LIVE_SWITCH, false);
+    assert.equal(isLiveEnabled({ ROBINHOOD_LIVE: '1' }), false);
+    assert.ok(created.length >= 1, 'expected paper createOrder calls');
+    assert.ok(created.every((b) => b.type === 'limit'));
+    assert.ok(created.every((b) => b.extended_hours === true));
+    assert.ok(created.every((b) => String(b.client_order_id || '').startsWith('wv-')));
+    const trades = await store.listTrades({ limit: 50 });
+    const sessionTrades = trades.filter((t) => String(t.ts).includes(sessionDate) || t.features?.sessionDate === sessionDate);
+    const filled = sessionTrades.filter((t) => t.broker_order_id);
+    assert.ok(filled.length >= 1);
+    assert.ok(filled.every((t) => t.client_order_id));
+    assert.ok(sim.paperBroker.submitted >= 1);
+    assert.equal(sim.paperBroker.failed, 0);
+  });
+
+  it('simulateSession does not POST when paper broker flag is off', async () => {
+    const config = loadConfig({ PAPER_CASH: '100', DAYTRADE_UNIVERSE: 'SOFI' });
+    const store = createMemoryStore();
+    const barsBySymbol = generateUniverseBars(['SOFI'], { days: 6, seed: 1 });
+    const dates = [...new Set(barsBySymbol.SOFI.map((b) => b.sessionDate))].sort();
+    const sessionDate = dates.at(-1);
+    let createCalls = 0;
+    const orderMirror = {
+      submit: (order) => submitPaperOrder(
+        { createOrder: async () => { createCalls += 1; return { id: 'nope' }; } },
+        order,
+        { env: { PAPER_BROKER_ORDERS: 'false' } }
+      ),
+    };
+    const sim = await simulateSession({
+      store,
+      account: createAccount(100),
+      barsBySymbol,
+      sessionDate,
+      config,
+      orderMirror,
+    });
+    assert.equal(createCalls, 0);
+    assert.equal(isPaperSubmitEnabled({ PAPER_BROKER_ORDERS: 'false' }), false);
+    const trades = await store.listTrades({ limit: 50 });
+    assert.ok(trades.length >= 0);
+    if (sim.sessionSignals.some((s) => s.side === 'BUY')) {
+      assert.ok(sim.paperBroker.skipped >= 1 || trades.length === 0);
+    }
   });
 });
