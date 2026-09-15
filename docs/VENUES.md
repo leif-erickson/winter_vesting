@@ -14,10 +14,12 @@ Asset books (stocks / crypto / futures / options) and the named stock-auction ed
 ## Alpaca paper
 
 - Market data: IEX 5-minute RTH bars (`feed=iex`, `timeframe=5Min`) when `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` are real paper keys.
-- Daily PoC (`npm run paper:daily`): live data, **paper fills**. Local journal is the fill source of truth.
+- Daily PoC (`npm run paper:daily`): live data, **paper fills**. Local `trade_journal` stays the research fill source of truth. In addition, fills are **POSTed** to the Alpaca paper trading API so the paper account is not idle.
 - Trading host is `https://paper-api.alpaca.markets`. The adapter is constructed with `paper: true`.
 - `https://api.alpaca.markets` (live) and `ALPACA_LIVE=1` are **refused**. The daily/broker adapter errors out rather than silently trading live.
-- Optional order mirror: `ALPACA_SUBMIT_PAPER=1` submits the paper engine's market/limit decisions to the Alpaca **paper** API and records `broker_order_id`. Default **off**. Do **not** enable in CI.
+- Paper broker POSTs default **on** (`PAPER_BROKER_ORDERS` / `ALPACA_SUBMIT_PAPER`). Opt out with `PAPER_BROKER_ORDERS=false` or `ALPACA_SUBMIT_PAPER=0`. Orders use a deterministic `client_order_id` (journal identity) so a re-run does not double-POST. `broker_order_id` and `client_order_id` are stored on the journal row.
+- `paper:replay` stays **journal-only** (no Alpaca POSTs). Do not wire replay to the paper brokerage — a 90-day replay would dump historical fills onto today's paper account.
+- Sizing still follows the $100 cash / T+1 / no-short / flatten-by-close model. POSTs are the same fractional long + flatten sells, not a live-money path.
 
 ## Robinhood Agentic MCP
 

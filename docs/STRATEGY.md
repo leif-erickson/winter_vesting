@@ -109,6 +109,13 @@ Off-hours (US cash shut): research **crypto** (24/7, including Saturday) on `cry
 
 Weekday `paper:daily` is the tape. Weekly is where the edge is **maintained**. Next-to-explore ranking lives on `GET /research/board` and does not promote live-eligible.
 
+## Execution
+
+- **Local journal** (`trade_journal`): every paper fill is still append/upserted. This is the research source of truth for rank / OOS.
+- **Alpaca paper POSTs** (`paper:daily` only): the same fill is also `POST /v2/orders` to `https://paper-api.alpaca.markets` so the Alpaca paper account shows orders and positions. Default **on**. Opt out: `PAPER_BROKER_ORDERS=false` or `ALPACA_SUBMIT_PAPER=0`.
+- **Live** stays hard-off: `ALPACA_LIVE` / live host refused; Robinhood `LIVE_SWITCH = false`. Do not treat paper POSTs as a live enable.
+- `paper:replay` does **not** POST to Alpaca (historical lookback would spam the paper book).
+
 ## Parked
 
 - Real CVD / tick / Lee-Ready (orderflow parked; no fake CVD from candle color)

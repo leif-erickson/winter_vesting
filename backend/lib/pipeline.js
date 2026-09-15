@@ -13,6 +13,7 @@ const {
 const { rankAndPromote } = require('./rank');
 const { flattenBars } = require('./research');
 const { setupIdsForSymbol, DEFAULT_REPLAY_DAYS } = require('./config');
+const { makePaperClientOrderId } = require('./alpacaPaper');
 
 const JOURNAL_LIST_LIMIT = 10000;
 
@@ -50,18 +51,54 @@ function checkExit(position, bar, config) {
   return null;
 }
 
-async function mirrorOrder(orderMirror, order) {
+function emptyPaperBroker() {
+  return { submitted: 0, skipped: 0, failed: 0, duplicates: 0, orders: [] };
+}
+
+function recordPaperBroker(stats, order, result) {
+  if (!stats) return result;
+  if (!result) {
+    stats.skipped += 1;
+    return result;
+  }
+  if (result.submitted) {
+    stats.submitted += 1;
+    if (result.duplicate) stats.duplicates += 1;
+  } else if (result.reason === 'submit_disabled') {
+    stats.skipped += 1;
+  } else {
+    stats.failed += 1;
+  }
+  stats.orders.push({
+    symbol: order.symbol,
+    side: order.side,
+    submitted: Boolean(result.submitted),
+    reason: result.reason || null,
+    brokerOrderId: result.brokerOrderId || null,
+    clientOrderId: result.clientOrderId || order.clientOrderId || null,
+    duplicate: Boolean(result.duplicate),
+  });
+  return result;
+}
+
+async function mirrorOrder(orderMirror, order, paperBroker) {
   if (!orderMirror || typeof orderMirror.submit !== 'function') return null;
   try {
-    return await orderMirror.submit(order);
+    const result = await orderMirror.submit(order);
+    return recordPaperBroker(paperBroker, order, result);
   } catch (err) {
     if (err.code === 'ALPACA_LIVE_REFUSED') throw err;
     console.warn(`Alpaca paper mirror skipped (${order.symbol} ${order.side}): ${err.message}`);
-    return { submitted: false, reason: 'mirror_failed', message: err.message };
+    return recordPaperBroker(paperBroker, order, {
+      submitted: false,
+      reason: 'mirror_failed',
+      message: err.message,
+      clientOrderId: order.clientOrderId || null,
+    });
   }
 }
 
-async function closePosition({ store, account, position, bar, hint, orderMirror }) {
+async function closePosition({ store, account, position, bar, hint, orderMirror, paperBroker }) {
   const sold = sell(account, {
     price: bar.close && hint !== 'stop' && hint !== 'target' ? bar.close : (hint === 'stop' ? position.stop : hint === 'target' ? position.target : bar.close),
     shares: position.quantity,
@@ -80,15 +117,24 @@ async function closePosition({ store, account, position, bar, hint, orderMirror 
     symbol: position.symbol,
     side: 'sell',
     qty: position.quantity,
-    type: 'market',
+    type: 'limit',
     timeInForce: 'day',
-  });
+    paperPrice: exitPrice,
+    extendedHours: true,
+    clientOrderId: makePaperClientOrderId({
+      symbol: position.symbol,
+      ts: bar.ts,
+      setupId: position.setupId,
+      side: 'sell',
+    }),
+  }, paperBroker);
   return { account: { ...sold.account, equity: sold.account.settledCash + sold.account.unsettledCash }, closed, pnl };
 }
 
 /**
  * Simulate one RTH session: signals, paper fills, flatten-by-close.
- * Does not submit live orders. Optional orderMirror may copy fills to Alpaca paper.
+ * Does not submit live orders. Optional orderMirror POSTs the same fills to
+ * Alpaca paper (paper-api.alpaca.markets) in addition to the local journal.
  */
 async function simulateSession({
   store,
@@ -101,6 +147,7 @@ async function simulateSession({
   account = maybeNewSession(account, sessionDate);
   const open = [];
   const sessionSignals = [];
+  const paperBroker = emptyPaperBroker();
 
   const dayBars = [];
   for (const symbol of config.universe) {
@@ -147,6 +194,7 @@ async function simulateSession({
           bar: { ...bar, close: exit.exitPrice },
           hint: exit.outcomeHint,
           orderMirror,
+          paperBroker,
         });
         account = closed.account;
         const idx = open.indexOf(position);
@@ -172,14 +220,22 @@ async function simulateSession({
         ...bought.account,
         equity: bought.account.settledCash + bought.account.unsettledCash + sized.notional,
       };
+      const clientOrderId = makePaperClientOrderId({
+        symbol: signal.symbol,
+        ts: signal.ts,
+        setupId: signal.setupId,
+        side: signal.side,
+      });
       const mirrored = await mirrorOrder(orderMirror, {
         symbol: signal.symbol,
         side: (signal.side || 'buy').toLowerCase(),
         qty: sized.shares,
-        type: 'market',
+        type: 'limit',
         timeInForce: 'day',
         paperPrice: signal.paperPrice,
-      });
+        extendedHours: true,
+        clientOrderId,
+      }, paperBroker);
       const row = await writeTrade({
         symbol: signal.symbol,
         ts: signal.ts,
@@ -195,6 +251,7 @@ async function simulateSession({
         status: 'open',
         mode: 'paper',
         brokerOrderId: mirrored?.brokerOrderId || null,
+        clientOrderId: mirrored?.clientOrderId || clientOrderId,
         assetClass: signal.assetClass || 'stocks',
       });
       open.push({
@@ -226,13 +283,14 @@ async function simulateSession({
       bar: last,
       hint: 'session_flat',
       orderMirror,
+      paperBroker,
     });
     account = closed.account;
     const idx = open.indexOf(position);
     if (idx >= 0) open.splice(idx, 1);
   }
 
-  return { account, sessionSignals };
+  return { account, sessionSignals, paperBroker };
 }
 
 async function persistCandles(store, barsBySymbol, timeframe = '5m') {

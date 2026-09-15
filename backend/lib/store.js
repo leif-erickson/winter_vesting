@@ -41,6 +41,7 @@ function memoryTradeRow(trade, id) {
     outcome: trade.outcome ?? null,
     mode: trade.mode || 'paper',
     broker_order_id: trade.brokerOrderId ?? trade.broker_order_id ?? null,
+    client_order_id: trade.clientOrderId ?? trade.client_order_id ?? null,
     asset_class: trade.assetClass || trade.asset_class || 'stocks',
   };
 }
@@ -151,6 +152,7 @@ function createMemoryStore() {
         pnl: trade.pnl ?? found.pnl ?? null,
         outcome: trade.outcome ?? found.outcome ?? null,
         broker_order_id: trade.brokerOrderId ?? trade.broker_order_id ?? found.broker_order_id ?? null,
+        client_order_id: trade.clientOrderId ?? trade.client_order_id ?? found.client_order_id ?? null,
       });
       return clone(found);
     },
@@ -164,10 +166,11 @@ function createMemoryStore() {
       row.status = status;
       return clone(row);
     },
-    async setBrokerOrderId(id, brokerOrderId) {
+    async setBrokerOrderId(id, brokerOrderId, clientOrderId) {
       const row = state.trades.find((t) => t.id === id);
       if (!row) throw new Error(`trade ${id} not found`);
       row.broker_order_id = brokerOrderId;
+      if (clientOrderId != null) row.client_order_id = clientOrderId;
       return clone(row);
     },
     async listTrades({ limit = 200, setupId } = {}) {
@@ -345,8 +348,8 @@ function createPgStore(pool) {
       const { rows } = await pool.query(
         `INSERT INTO trade_journal
           (symbol, ts, side, setup_id, features, reason, paper_price, size, notional,
-           stop_price, target_price, status, exit_ts, exit_price, pnl, outcome, mode, broker_order_id, asset_class)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+           stop_price, target_price, status, exit_ts, exit_price, pnl, outcome, mode, broker_order_id, client_order_id, asset_class)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
          RETURNING *`,
         [
           trade.symbol,
@@ -367,6 +370,7 @@ function createPgStore(pool) {
           trade.outcome ?? null,
           trade.mode || 'paper',
           trade.brokerOrderId ?? trade.broker_order_id ?? null,
+          trade.clientOrderId ?? trade.client_order_id ?? null,
           trade.assetClass || trade.asset_class || 'stocks',
         ]
       );
@@ -384,7 +388,9 @@ function createPgStore(pool) {
         `UPDATE trade_journal
          SET features=$2, reason=$3, paper_price=$4, size=$5, notional=$6,
              stop_price=$7, target_price=$8, status=$9, mode=$10,
-             broker_order_id=COALESCE($11, broker_order_id), asset_class=$12
+             broker_order_id=COALESCE($11, broker_order_id),
+             client_order_id=COALESCE($12, client_order_id),
+             asset_class=$13
          WHERE id=$1 RETURNING *`,
         [
           existing[0].id,
@@ -398,6 +404,7 @@ function createPgStore(pool) {
           trade.status || 'open',
           trade.mode || 'paper',
           trade.brokerOrderId ?? trade.broker_order_id ?? null,
+          trade.clientOrderId ?? trade.client_order_id ?? null,
           trade.assetClass || trade.asset_class || 'stocks',
         ]
       );
@@ -412,7 +419,14 @@ function createPgStore(pool) {
       );
       return rows[0];
     },
-    async setBrokerOrderId(id, brokerOrderId) {
+    async setBrokerOrderId(id, brokerOrderId, clientOrderId) {
+      if (clientOrderId != null) {
+        const { rows } = await pool.query(
+          `UPDATE trade_journal SET broker_order_id=$2, client_order_id=COALESCE($3, client_order_id) WHERE id=$1 RETURNING *`,
+          [id, brokerOrderId, clientOrderId]
+        );
+        return rows[0];
+      }
       const { rows } = await pool.query(
         `UPDATE trade_journal SET broker_order_id=$2 WHERE id=$1 RETURNING *`,
         [id, brokerOrderId]

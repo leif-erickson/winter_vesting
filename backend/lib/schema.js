@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS trade_journal (
   outcome VARCHAR(20),
   mode VARCHAR(16) NOT NULL DEFAULT 'paper',
   broker_order_id VARCHAR(64),
+  client_order_id VARCHAR(64),
   asset_class VARCHAR(16) NOT NULL DEFAULT 'stocks',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -146,6 +147,10 @@ async function ensureSchema(pool) {
   await pool.query(`
     ALTER TABLE trade_journal
       ADD COLUMN IF NOT EXISTS broker_order_id VARCHAR(64)
+  `);
+  await pool.query(`
+    ALTER TABLE trade_journal
+      ADD COLUMN IF NOT EXISTS client_order_id VARCHAR(64)
   `);
   await pool.query(`
     ALTER TABLE trade_journal

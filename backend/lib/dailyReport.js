@@ -65,20 +65,47 @@ function formatRankings(rankings) {
     .join('\n');
 }
 
-function formatPaperAccount(snapshot) {
+function formatPaperAccount(snapshot, { paperSubmitEnabled } = {}) {
   if (!snapshot) {
     return '_Alpaca PAPER snapshot not requested._';
   }
   if (!snapshot.ok) {
     return `_Alpaca PAPER snapshot unreachable_ (${snapshot.reason || 'error'}${snapshot.message ? `: ${snapshot.message}` : ''}). Local journal remains the fill source of truth.`;
   }
+  const submitLine = paperSubmitEnabled
+    ? '• *Paper broker POSTs:* on → `https://paper-api.alpaca.markets` (`PAPER_BROKER_ORDERS` / `ALPACA_SUBMIT_PAPER`) — live host refused'
+    : '• *Paper broker POSTs:* off — local journal only (`PAPER_BROKER_ORDERS=false`)';
   return [
-    '• *Venue:* Alpaca PAPER (`https://paper-api.alpaca.markets`) — read-only GET, no live orders',
+    '• *Venue:* Alpaca PAPER (`https://paper-api.alpaca.markets`) — no live orders',
+    submitLine,
     `• equity=${money(snapshot.equity)}`,
     `• cash=${money(snapshot.cash)}`,
     `• buying power=${money(snapshot.buyingPower)}`,
     `• positions count=${snapshot.positionsCount ?? 0}`,
   ].join('\n');
+}
+
+function formatPaperBroker(paperBroker, paperSubmitEnabled) {
+  if (!paperSubmitEnabled) {
+    return '_Paper broker POSTs disabled. Journal fills were not mirrored to Alpaca._';
+  }
+  if (!paperBroker) {
+    return '_No paper broker summary._';
+  }
+  const lines = [
+    `• submitted=${paperBroker.submitted ?? 0} skipped=${paperBroker.skipped ?? 0} failed=${paperBroker.failed ?? 0} duplicates=${paperBroker.duplicates ?? 0}`,
+  ];
+  const orders = Array.isArray(paperBroker.orders) ? paperBroker.orders : [];
+  for (const o of orders.slice(0, 12)) {
+    const id = o.brokerOrderId || 'n/a';
+    const cid = o.clientOrderId || 'n/a';
+    const flag = o.submitted ? (o.duplicate ? 'dup' : 'ok') : (o.reason || 'fail');
+    lines.push(`• \`${o.symbol}\` ${o.side} ${flag} broker_order_id=\`${id}\` client_order_id=\`${cid}\``);
+  }
+  if (orders.length > 12) {
+    lines.push(`• _…${orders.length - 12} more_`);
+  }
+  return lines.join('\n');
 }
 
 /**
@@ -103,7 +130,7 @@ function formatDailyReport(result) {
     `• *liveEnabled:* \`${liveEnabled}\``,
     `• *Named edge:* ${result.namedEdge || 'Stock auction: OR + VWAP + rvol'}`,
     `• *Regime:* \`${result.regime || 'n/a'}\``,
-    `• *Risk model:* flatten-by-close; local journal fills; Alpaca live trading off; Robinhood live off; NinjaTrader not used; options not on $100 cash book`,
+    `• *Risk model:* flatten-by-close; local journal fills; Alpaca paper POSTs ${result.paperSubmitEnabled ? 'on' : 'off'}; Alpaca live trading off; Robinhood live off; NinjaTrader not used; options not on $100 cash book`,
     '',
     '*Signals*',
     formatSignals(result.signals),
@@ -117,7 +144,10 @@ function formatDailyReport(result) {
     formatRankings(result.rankings),
     '',
     '*Alpaca PAPER account*',
-    formatPaperAccount(result.alpacaPaperAccount),
+    formatPaperAccount(result.alpacaPaperAccount, { paperSubmitEnabled: result.paperSubmitEnabled === true }),
+    '',
+    '*Alpaca paper POSTs*',
+    formatPaperBroker(result.paperBroker, result.paperSubmitEnabled === true),
   ];
   return `${lines.join('\n')}\n`;
 }
@@ -127,6 +157,7 @@ module.exports = {
   formatSignals,
   formatFills,
   formatRankings,
+  formatPaperBroker,
   money,
   pct,
 };
