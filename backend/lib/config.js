@@ -3,6 +3,7 @@
 const { FROZEN_ANOMALY_WINDOWS } = require('./regime');
 const { assertAmtIsNotAFacet, schoolSnapshot } = require('./schools');
 const { boardSnapshot } = require('./researchBoard');
+const { loadSleeves, sleevesSnapshot, DEFAULT_SLEEVE_EQUITY } = require('./sleeves');
 
 const MAX_FACETS = 5;
 
@@ -70,7 +71,7 @@ const ASSET_BOOKS = {
   stocks: {
     venue: 'alpaca_paper',
     live: 'robinhood_mcp_confirm',
-    notes: '$100 cash, no options, flatten-by-close',
+    notes: 'Alpaca paper: 100k intraday sleeve, 1–2% risk, flatten-by-close. RH Agentic $100 is a separate research budget, not this book.',
   },
   crypto: {
     venue: 'ccxt_paper',
@@ -146,6 +147,7 @@ function edgeSnapshot(config) {
     })),
     schools,
     assetBooks: cfg.assetBooks,
+    paperSleeves: sleevesSnapshot(cfg.paperSleeves || cfg),
     frozenWindows: cfg.frozenWindows,
     weekly: 'npm run paper:weekly writes backend/reports/weekly.md — named edge, OOS, regime mix, anomaly flags, one experiment slot',
     researchBoard: 'GET /research/board — books matrix, session clocks, next-to-explore (status queue), and OOS vs journal honesty. Never a fake setup ranking. Never live-eligible from this.',
@@ -159,16 +161,31 @@ function edgeSnapshot(config) {
 }
 
 function loadConfig(env = process.env) {
-  const startingCash = Number(env.PAPER_CASH || 100);
+  const paperSleeves = loadSleeves(env);
+  const startingCash = paperSleeves.active.startingEquity;
+  const rhResearchCash = paperSleeves.rhResearchCash;
   const setups = SETUPS.map((s) => ({ ...s }));
   assertFacetBudget(setups);
+  const maxEntriesRaw = env.MAX_ENTRIES_PER_DAY;
+  // Default 0 = no daily trade cap (same symbol may trade multiple times).
+  const maxEntriesPerDay = maxEntriesRaw == null || String(maxEntriesRaw).trim() === ''
+    ? 0
+    : Number(maxEntriesRaw);
   return {
     universe: parseUniverse(env.DAYTRADE_UNIVERSE),
     startingCash,
-    maxPositionPct: Number(env.MAX_POSITION_PCT || 0.25),
+    rhResearchCash,
+    paperSleeves,
+    activeSleeve: paperSleeves.activeId,
+    riskPct: paperSleeves.riskPct,
+    minRiskPct: paperSleeves.minRiskPct,
+    maxRiskPct: paperSleeves.maxRiskPct,
+    minPlannedR: paperSleeves.minPlannedR,
+    maxPlannedR: paperSleeves.maxPlannedR,
+    maxPositionPct: Number(env.MAX_POSITION_PCT || 1),
     maxDailyLoss: Number(env.MAX_DAILY_LOSS || startingCash * 0.08),
-    maxEntriesPerDay: Number(env.MAX_ENTRIES_PER_DAY || 4),
-    maxOpenPositions: 1,
+    maxEntriesPerDay: Number.isFinite(maxEntriesPerDay) ? maxEntriesPerDay : 0,
+    maxOpenPositions: Number(env.MAX_OPEN_POSITIONS || 1),
     barMinutes: 5,
     orBars: 3,
     rsiPeriod: 14,
@@ -178,7 +195,11 @@ function loadConfig(env = process.env) {
     flattenMinute: 15 * 60 + 50,
     rthStartMinute: 9 * 60 + 30,
     rthEndMinute: 16 * 60,
-    promotion: { ...PROMOTION_GATES },
+    promotion: {
+      ...PROMOTION_GATES,
+      // $20 on the old $100 book ≡ 20% of sleeve equity.
+      maxDrawdown: Number(env.MAX_DRAWDOWN || startingCash * (PROMOTION_GATES.maxDrawdown / 100)),
+    },
     setups,
     maxFacets: MAX_FACETS,
     namedEdge: NAMED_EDGE,
@@ -201,6 +222,7 @@ module.exports = {
   SLOW_LARGE_CAP,
   ASSET_BOOKS,
   DEFAULT_REPLAY_DAYS,
+  DEFAULT_SLEEVE_EQUITY,
   loadConfig,
   parseUniverse,
   setupIdsForSymbol,

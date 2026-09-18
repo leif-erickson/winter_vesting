@@ -6,7 +6,8 @@ const path = require('node:path');
 const { NAMED_EDGE, ASSET_BOOKS, loadConfig } = require('./config');
 const { FROZEN_ANOMALY_WINDOWS, frozenRegime } = require('./regime');
 const { sessionOf, rankAndPromote } = require('./rank');
-const { money, pct } = require('./dailyReport');
+const { money, pct, formatSleevePnl } = require('./dailyReport');
+const { splitPnlBySleeve, sleevesSnapshot } = require('./sleeves');
 
 const REPORT_DIR = path.join(__dirname, '..', 'reports');
 const WEEKLY_FILE = path.join(REPORT_DIR, 'weekly.md');
@@ -18,6 +19,7 @@ function formatWeeklyEdgeReport({
   ideas = [],
   sessionDates = [],
   windows = FROZEN_ANOMALY_WINDOWS,
+  paperSleeves = null,
 } = {}) {
   const regimes = { expansion: 0, reset: 0, quiet: 0 };
   for (const d of sessionDates) {
@@ -31,6 +33,8 @@ function formatWeeklyEdgeReport({
     }))
     .reduce((s, t) => s + Number(t.pnl || 0), 0);
   const allPnl = (trades || []).reduce((s, t) => s + Number(t.pnl || 0), 0);
+  const sleevePnl = splitPnlBySleeve(trades);
+  const sleeves = sleevesSnapshot(paperSleeves || {});
   const exploring = (ideas || []).filter((i) => i.status === 'exploring' || i.status === 'inbox');
   const experiment = exploring[0] || null;
 
@@ -47,6 +51,10 @@ function formatWeeklyEdgeReport({
     '• *AMT map:* 15m OR → initial_balance; VWAP → value; rvol → participation. SMC/VSA are journal tags only (not confirms). Orderflow parked. Gann/Tori are swing books, not 5m facets. One school_book per slot.',
     `• *Regime mix this sample:* expansion=${regimes.expansion} reset=${regimes.reset} quiet=${regimes.quiet}`,
     `• *Frozen-window P&L share:* ${money(frozenPnl)} of ${money(allPnl)} (Oct–Nov 2025 holdout must not be the whole story)`,
+    `• *Sleeves:* ${sleeves.activeId} active at ${money(sleeves.sleeves.find((s) => s.id === sleeves.activeId)?.startingEquity || 100000)} / ${(sleeves.riskPct * 100).toFixed(0)}% risk; unused parked (not RH Agentic)`,
+    '',
+    '*Sleeve P&L*',
+    formatSleevePnl(sleevePnl),
     '',
     '*Kill / park / promote*',
     rankingLines.length ? rankingLines.join('\n') : '_No rankings._',
@@ -61,7 +69,7 @@ function formatWeeklyEdgeReport({
     '',
     '*Cross-asset glance*',
     '• Same vol event should be compared on QQQ/NVDA (stocks), NQ (futures book — live in candlemaster), BTC (crypto paper). Do not stack them as extra confirms on one stock trigger.',
-    '• Options: IV crush after a melt-up is a separate book. Not on the $100 RH cash account.',
+    '• Options: IV crush after a melt-up is a parked Alpaca paper sleeve until wired. Not on the RH $100 cash account.',
   ];
   return `${lines.join('\n')}\n`;
 }
@@ -94,8 +102,9 @@ async function runWeekly({ store, config } = {}) {
     ideas,
     sessionDates,
     windows: cfg.frozenWindows,
+    paperSleeves: cfg.paperSleeves,
   });
-  return { markdown, rankings, sessionDates, trades };
+  return { markdown, rankings, sessionDates, trades, sleevePnl: splitPnlBySleeve(trades) };
 }
 
 async function runWeeklyCli({

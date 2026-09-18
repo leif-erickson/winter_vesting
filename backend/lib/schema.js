@@ -12,11 +12,11 @@ CREATE TABLE IF NOT EXISTS portfolio (
 
 CREATE TABLE IF NOT EXISTS paper_account (
   id INTEGER PRIMARY KEY DEFAULT 1,
-  starting_cash DECIMAL NOT NULL DEFAULT 100,
-  cash DECIMAL NOT NULL DEFAULT 100,
-  settled_cash DECIMAL NOT NULL DEFAULT 100,
+  starting_cash DECIMAL NOT NULL DEFAULT 100000,
+  cash DECIMAL NOT NULL DEFAULT 100000,
+  settled_cash DECIMAL NOT NULL DEFAULT 100000,
   unsettled_cash DECIMAL NOT NULL DEFAULT 0,
-  equity DECIMAL NOT NULL DEFAULT 100,
+  equity DECIMAL NOT NULL DEFAULT 100000,
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -199,8 +199,21 @@ async function ensureSchema(pool) {
   `);
   await pool.query(`
     INSERT INTO paper_account (id, starting_cash, cash, settled_cash, unsettled_cash, equity)
-    VALUES (1, 100, 100, 100, 0, 100)
+    VALUES (1, 100000, 100000, 100000, 0, 100000)
     ON CONFLICT (id) DO NOTHING
+  `);
+  // Rebase leftover $100 RH-toy paper_account rows onto the intraday sleeve.
+  // Skip if the row already looks like sleeve capital.
+  await pool.query(`
+    UPDATE paper_account
+       SET starting_cash = 100000,
+           cash = 100000,
+           settled_cash = 100000,
+           unsettled_cash = 0,
+           equity = 100000,
+           updated_at = NOW()
+     WHERE id = 1
+       AND starting_cash < 1000
   `);
   for (const setup of SETUPS) {
     await pool.query(

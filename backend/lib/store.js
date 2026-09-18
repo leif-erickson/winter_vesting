@@ -49,11 +49,11 @@ function memoryTradeRow(trade, id) {
 function defaultAccountRow() {
   return {
     id: 1,
-    starting_cash: 100,
-    cash: 100,
-    settled_cash: 100,
+    starting_cash: 100000,
+    cash: 100000,
+    settled_cash: 100000,
     unsettled_cash: 0,
-    equity: 100,
+    equity: 100000,
   };
 }
 
@@ -83,7 +83,7 @@ function createMemoryStore() {
 
   return {
     kind: 'memory',
-    async resetPaper(startingCash = 100) {
+    async resetPaper(startingCash = 100000) {
       state.account = {
         id: 1,
         starting_cash: startingCash,
@@ -291,7 +291,7 @@ function createMemoryStore() {
 function createPgStore(pool) {
   return {
     kind: 'pg',
-    async resetPaper(startingCash = 100) {
+    async resetPaper(startingCash = 100000) {
       await pool.query('DELETE FROM trade_journal');
       await pool.query('DELETE FROM paper_positions');
       await pool.query('DELETE FROM setup_metrics');
