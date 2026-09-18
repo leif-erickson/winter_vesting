@@ -9,6 +9,7 @@ const { simulateSession, allSessionDates } = require('./pipeline');
 const { rankAndPromote, sessionOf } = require('./rank');
 const { regimeForDate } = require('./regime');
 const { formatDailyReport } = require('./dailyReport');
+const { isToyPaperAccount, splitPnlBySleeve, sleevesSnapshot, ACTIVE_PAPER_SLEEVE } = require('./sleeves');
 const {
   assertPaperOnly,
   createAlpacaPaperClient,
@@ -55,8 +56,14 @@ function assertAlpacaBars(barsBySymbol) {
   }
 }
 
-function accountFromStoreRow(row, startingCash) {
-  if (!row) return createAccount(startingCash);
+function accountFromStoreRow(row, startingCash, extras = {}) {
+  const sleeve = extras.sleeve || ACTIVE_PAPER_SLEEVE;
+  const settlement = extras.settlement || 'instant';
+  // Old $100 journal rows are the RH research toy — rebase to the active sleeve
+  // so paper:daily does not POST 25-dollar notionals to Alpaca paper.
+  if (isToyPaperAccount(row, startingCash)) {
+    return createAccount(startingCash, { sleeve, settlement });
+  }
   return {
     startingCash: Number(row.starting_cash ?? row.startingCash ?? startingCash),
     cash: Number(row.cash ?? startingCash),
@@ -66,6 +73,8 @@ function accountFromStoreRow(row, startingCash) {
     dayStartEquity: Number(row.equity ?? startingCash),
     entriesToday: 0,
     sessionDate: row.sessionDate ?? row.session_date ?? null,
+    sleeve,
+    settlement,
   };
 }
 
@@ -110,7 +119,10 @@ async function runDaily({
   }
 
   const existing = store ? await store.getAccount() : null;
-  let account = accountFromStoreRow(existing, config.startingCash);
+  let account = accountFromStoreRow(existing, config.startingCash, {
+    sleeve: config.activeSleeve,
+    settlement: 'instant',
+  });
 
   const sim = await simulateSession({
     store,
@@ -126,6 +138,8 @@ async function runDaily({
   const trades = store ? await store.listTrades({ limit: 2000 }) : [];
   const fills = trades.filter((t) => sessionOf(t) === sessionDate);
   const sessionPnl = fills.reduce((sum, t) => sum + Number(t.pnl || 0), 0);
+  const sleevePnl = splitPnlBySleeve(fills);
+  const journalSleevePnl = splitPnlBySleeve(trades);
 
   let rankings = null;
   if (store && store.kind === 'pg') {
@@ -151,7 +165,12 @@ async function runDaily({
     signals: sim.sessionSignals,
     fills,
     sessionPnl,
+    sleevePnl,
+    journalSleevePnl,
+    paperSleeves: sleevesSnapshot(config.paperSleeves || config),
+    newsSkip: sim.newsSkip || null,
     startingCash: config.startingCash,
+    rhResearchCash: config.rhResearchCash,
     account,
     rankings,
     liveEnabled: false,

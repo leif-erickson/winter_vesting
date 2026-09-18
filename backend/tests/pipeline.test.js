@@ -46,7 +46,7 @@ function wrapResetCounter(store) {
 
 describe('paper pipeline', () => {
   it('replays synthetic 5m bars, journals trades, and ranks setups', async () => {
-    const config = loadConfig({ PAPER_CASH: '100', DAYTRADE_UNIVERSE: 'SOFI,PLTR' });
+    const config = loadConfig({ DAYTRADE_UNIVERSE: 'SOFI,PLTR' });
     const store = createMemoryStore();
     const barsClient = createBarsClient({ env: {} });
     const result = await runReplay({
@@ -61,7 +61,7 @@ describe('paper pipeline', () => {
     assert.ok(result.signals >= 1, 'expected at least one method to produce signals');
     assert.ok(result.trades >= 1, 'expected journaled paper trades');
     assert.ok(result.account.equity > 0);
-    assert.ok(result.account.equity <= 100 + 50);
+    assert.ok(result.account.equity <= config.startingCash * 1.5);
     const trades = await store.listTrades({ limit: 50 });
     assert.ok(trades[0].reason);
     assert.equal(trades[0].mode, 'paper');
@@ -85,7 +85,7 @@ describe('paper pipeline', () => {
   });
 
   it('rank on a non-empty journal does not drop row count or call resetPaper', async () => {
-    const config = loadConfig({ PAPER_CASH: '100', DAYTRADE_UNIVERSE: 'SOFI,PLTR' });
+    const config = loadConfig({ DAYTRADE_UNIVERSE: 'SOFI,PLTR' });
     const store = createMemoryStore();
     await store.upsertCandles([
       {
@@ -126,7 +126,7 @@ describe('paper pipeline', () => {
   });
 
   it('replay without --reset does not drop existing ids', async () => {
-    const config = loadConfig({ PAPER_CASH: '100', DAYTRADE_UNIVERSE: 'SOFI,PLTR' });
+    const config = loadConfig({ DAYTRADE_UNIVERSE: 'SOFI,PLTR' });
     const store = createMemoryStore();
     const barsClient = createBarsClient({ env: {} });
     const seeded = await seedKeepTrade(store);
@@ -159,7 +159,7 @@ describe('paper pipeline', () => {
   });
 
   it('replay with --reset rebuilds the journal', async () => {
-    const config = loadConfig({ PAPER_CASH: '100', DAYTRADE_UNIVERSE: 'SOFI,PLTR' });
+    const config = loadConfig({ DAYTRADE_UNIVERSE: 'SOFI,PLTR' });
     const store = createMemoryStore();
     const barsClient = createBarsClient({ env: {} });
     const seeded = await seedKeepTrade(store);
@@ -178,7 +178,7 @@ describe('paper pipeline', () => {
   });
 
   it('replay with longer lookback stores more candle_bars', async () => {
-    const config = loadConfig({ PAPER_CASH: '100', DAYTRADE_UNIVERSE: 'SOFI,PLTR' });
+    const config = loadConfig({ DAYTRADE_UNIVERSE: 'SOFI,PLTR' });
     const store = createMemoryStore();
     const barsClient = createBarsClient({ env: {} });
     await runReplay({
@@ -205,7 +205,7 @@ describe('paper pipeline', () => {
   });
 
   it('defaults Alpaca historical lookback to DEFAULT_REPLAY_DAYS and does not reset', async () => {
-    const config = loadConfig({ PAPER_CASH: '100', DAYTRADE_UNIVERSE: 'SOFI,PLTR' });
+    const config = loadConfig({ DAYTRADE_UNIVERSE: 'SOFI,PLTR' });
     const store = createMemoryStore();
     const inner = createBarsClient({ env: {} });
     let requested;
@@ -231,7 +231,7 @@ describe('paper pipeline', () => {
   });
 
   it('simulateSession POSTs paper orders via mock createOrder and journals ids; live stays off', async () => {
-    const config = loadConfig({ PAPER_CASH: '100', DAYTRADE_UNIVERSE: 'SOFI' });
+    const config = loadConfig({ DAYTRADE_UNIVERSE: 'SOFI' });
     const store = createMemoryStore();
     const barsBySymbol = generateUniverseBars(['SOFI'], { days: 6, seed: 1 });
     const dates = [...new Set(barsBySymbol.SOFI.map((b) => b.sessionDate))].sort();
@@ -248,7 +248,7 @@ describe('paper pipeline', () => {
     };
     const sim = await simulateSession({
       store,
-      account: createAccount(100),
+      account: createAccount(100000),
       barsBySymbol,
       sessionDate,
       config,
@@ -260,17 +260,20 @@ describe('paper pipeline', () => {
     assert.ok(created.every((b) => b.type === 'limit'));
     assert.ok(created.every((b) => b.extended_hours === true));
     assert.ok(created.every((b) => String(b.client_order_id || '').startsWith('wv-')));
+    const buyOrders = created.filter((b) => b.side === 'buy');
+    assert.ok(buyOrders.some((b) => Number(b.qty) > 25), 'sleeve size must exceed the $100 toy 25% cap');
     const trades = await store.listTrades({ limit: 50 });
     const sessionTrades = trades.filter((t) => String(t.ts).includes(sessionDate) || t.features?.sessionDate === sessionDate);
     const filled = sessionTrades.filter((t) => t.broker_order_id);
     assert.ok(filled.length >= 1);
     assert.ok(filled.every((t) => t.client_order_id));
+    assert.ok(filled.every((t) => t.features?.sleeve === 'intraday'));
     assert.ok(sim.paperBroker.submitted >= 1);
     assert.equal(sim.paperBroker.failed, 0);
   });
 
   it('simulateSession does not POST when paper broker flag is off', async () => {
-    const config = loadConfig({ PAPER_CASH: '100', DAYTRADE_UNIVERSE: 'SOFI' });
+    const config = loadConfig({ DAYTRADE_UNIVERSE: 'SOFI' });
     const store = createMemoryStore();
     const barsBySymbol = generateUniverseBars(['SOFI'], { days: 6, seed: 1 });
     const dates = [...new Set(barsBySymbol.SOFI.map((b) => b.sessionDate))].sort();
@@ -285,7 +288,7 @@ describe('paper pipeline', () => {
     };
     const sim = await simulateSession({
       store,
-      account: createAccount(100),
+      account: createAccount(100000),
       barsBySymbol,
       sessionDate,
       config,
@@ -298,5 +301,22 @@ describe('paper pipeline', () => {
     if (sim.sessionSignals.some((s) => s.side === 'BUY')) {
       assert.ok(sim.paperBroker.skipped >= 1 || trades.length === 0);
     }
+  });
+
+  it('skips new entries on filed NFP/CPI/FOMC auction-skip days', async () => {
+    const config = loadConfig({ DAYTRADE_UNIVERSE: 'SOFI' });
+    const store = createMemoryStore();
+    const barsBySymbol = generateUniverseBars(['SOFI'], { days: 3, seed: 1, startDate: '2026-09-04' });
+    const sim = await simulateSession({
+      store,
+      account: createAccount(100000),
+      barsBySymbol,
+      sessionDate: '2026-09-04',
+      config,
+    });
+    assert.equal(sim.newsSkip.skipped, true);
+    assert.equal(sim.newsSkip.event.id, 'nfp');
+    const trades = await store.listTrades({ limit: 50 });
+    assert.equal(trades.length, 0);
   });
 });

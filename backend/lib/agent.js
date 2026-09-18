@@ -39,9 +39,10 @@ async function getAgentContext(store, config) {
   const board = boardSnapshot({ ideas, setups });
 
   return {
-    intent: 'Explore US equity strategies on Alpaca paper. Live Robinhood is out of band and confirm-to-place only. $100 is a research budget, not necessarily the live account.',
+    intent: 'Explore US equity strategies on Alpaca paper (100k intraday sleeve, 1–2% risk). Live Robinhood is out of band and confirm-to-place only. RH $100 is a separate research budget, not Alpaca paper sizing.',
     namedEdge: edge.namedEdge,
     assetBooks: edge.assetBooks,
+    paperSleeves: edge.paperSleeves,
     frozenWindows: edge.frozenWindows,
     maxFacets: edge.maxFacets,
     schools: edge.schools,

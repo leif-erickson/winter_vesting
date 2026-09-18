@@ -67,6 +67,10 @@ describe('facet budget / instrument families / books', () => {
     assert.match(ASSET_BOOKS.futures.notes, /Globex Sunday 4:00 PM MT/);
     assert.match(ASSET_BOOKS.futures.notes, /nq_es_auction/);
     assert.equal(ASSET_BOOKS.options.live, 'not_on_100_cash_rh');
+    assert.match(config.assetBooks.stocks.notes, /100k intraday sleeve/);
+    assert.equal(config.paperSleeves.activeId, 'intraday');
+    assert.equal(config.paperSleeves.sleeves.multi_day.status, 'parked');
+    assert.equal(config.maxEntriesPerDay, 0);
     assert.equal(ASSET_BOOKS.crypto.live, 'never_this_repo');
     assert.equal(ASSET_BOOKS.crypto.venue, 'ccxt_paper');
     assert.match(ASSET_BOOKS.crypto.notes, /Weekend\/24h/);

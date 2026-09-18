@@ -85,6 +85,33 @@ function formatPaperAccount(snapshot, { paperSubmitEnabled } = {}) {
   ].join('\n');
 }
 
+function formatSleevePnl(split, { parked = ['multi_day', 'crypto', 'options'] } = {}) {
+  if (!split || !split.pnl) {
+    return '_No sleeve P&L._';
+  }
+  const labels = {
+    intraday: 'intraday (active paper:daily)',
+    multi_day: 'multi-day (parked)',
+    crypto: 'crypto (parked)',
+    options: 'options (parked)',
+  };
+  return ['intraday', 'multi_day', 'crypto', 'options']
+    .map((id) => {
+      const pnl = Number(split.pnl[id] || 0);
+      const n = Number(split.counts?.[id] || 0);
+      const stub = parked.includes(id) && n === 0 ? ' — stub' : '';
+      return `• *${labels[id] || id}:* ${money(pnl)} n=${n}${stub}`;
+    })
+    .join('\n');
+}
+
+function formatNewsSkip(newsSkip) {
+  if (!newsSkip || !newsSkip.skipped) return null;
+  const title = newsSkip.event?.title || newsSkip.event?.id || 'event day';
+  const date = newsSkip.event?.date || '';
+  return `• *News/event throttle:* skipped 5m auction entries (${title}${date ? ` ${date}` : ''}). Flatten-by-close still applies. Not a sixth facet.`;
+}
+
 function formatPaperBroker(paperBroker, paperSubmitEnabled) {
   if (!paperSubmitEnabled) {
     return '_Paper broker POSTs disabled. Journal fills were not mirrored to Alpaca._';
@@ -116,11 +143,14 @@ function formatDailyReport(result) {
   const sessionDate = result.sessionDate || 'unknown';
   const source = result.source || 'fail';
   const universe = Array.isArray(result.universe) ? result.universe.join(',') : String(result.universe || '');
-  const startingCash = Number(result.startingCash ?? result.account?.startingCash ?? 100);
+  const startingCash = Number(result.startingCash ?? result.account?.startingCash ?? 100000);
   const equity = Number(result.account?.equity ?? startingCash);
   const sessionPnl = Number(result.sessionPnl ?? 0);
   const liveEnabled = result.liveEnabled === true;
   const vsStart = equity - startingCash;
+  const riskPct = result.paperSleeves?.riskPct;
+  const riskLabel = Number.isFinite(Number(riskPct)) ? `${(Number(riskPct) * 100).toFixed(0)}%` : '1–2%';
+  const newsSkipLine = formatNewsSkip(result.newsSkip);
 
   const lines = [
     `*Daily paper PoC* — live data, paper fills, no live money`,
@@ -130,7 +160,9 @@ function formatDailyReport(result) {
     `• *liveEnabled:* \`${liveEnabled}\``,
     `• *Named edge:* ${result.namedEdge || 'Stock auction: OR + VWAP + rvol'}`,
     `• *Regime:* \`${result.regime || 'n/a'}\``,
-    `• *Risk model:* flatten-by-close; local journal fills; Alpaca paper POSTs ${result.paperSubmitEnabled ? 'on' : 'off'}; Alpaca live trading off; Robinhood live off; NinjaTrader not used; options not on $100 cash book`,
+    `• *Sleeves:* intraday active (~${money(startingCash)} at ${riskLabel} risk/trade); multi-day / crypto / options parked. Not RH Agentic.`,
+    `• *Risk model:* 1–2% of active sleeve equity; no 1-trade/day cap; flatten-by-close; local journal fills; Alpaca paper POSTs ${result.paperSubmitEnabled ? 'on' : 'off'}; Alpaca live trading off; Robinhood live off; NinjaTrader not used`,
+    newsSkipLine,
     '',
     '*Signals*',
     formatSignals(result.signals),
@@ -138,7 +170,10 @@ function formatDailyReport(result) {
     '*Paper fills / P&L*',
     formatFills(result.fills),
     `• *Session P&L:* ${money(sessionPnl)}`,
-    `• *Equity:* ${money(equity)} vs ${money(startingCash)} starting cash (${vsStart >= 0 ? '+' : ''}${money(vsStart)})`,
+    `• *Equity:* ${money(equity)} vs ${money(startingCash)} intraday sleeve (${vsStart >= 0 ? '+' : ''}${money(vsStart)})`,
+    '',
+    '*Sleeve P&L*',
+    formatSleevePnl(result.sleevePnl),
     '',
     '*Walk-forward*',
     formatRankings(result.rankings),
@@ -148,7 +183,7 @@ function formatDailyReport(result) {
     '',
     '*Alpaca paper POSTs*',
     formatPaperBroker(result.paperBroker, result.paperSubmitEnabled === true),
-  ];
+  ].filter((line) => line != null);
   return `${lines.join('\n')}\n`;
 }
 
@@ -158,6 +193,8 @@ module.exports = {
   formatFills,
   formatRankings,
   formatPaperBroker,
+  formatSleevePnl,
+  formatNewsSkip,
   money,
   pct,
 };

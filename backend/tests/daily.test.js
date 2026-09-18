@@ -37,13 +37,27 @@ const FIXTURE = {
     },
   ],
   sessionPnl: 0.42,
-  startingCash: 100,
+  startingCash: 100000,
+  sleevePnl: {
+    pnl: { intraday: 0.42, multi_day: 0, crypto: 0, options: 0 },
+    counts: { intraday: 1, multi_day: 0, crypto: 0, options: 0 },
+  },
+  paperSleeves: {
+    activeId: 'intraday',
+    riskPct: 0.01,
+    sleeves: [
+      { id: 'intraday', status: 'active', startingEquity: 100000 },
+      { id: 'multi_day', status: 'parked', startingEquity: 100000 },
+      { id: 'crypto', status: 'parked', startingEquity: 100000 },
+      { id: 'options', status: 'parked', startingEquity: 100000 },
+    ],
+  },
   account: {
-    equity: 100.42,
-    cash: 100.42,
-    settledCash: 100.42,
+    equity: 100000.42,
+    cash: 100000.42,
+    settledCash: 100000.42,
     unsettledCash: 0,
-    startingCash: 100,
+    startingCash: 100000,
   },
   rankings: [
     {
@@ -109,8 +123,14 @@ describe('daily paper PoC report', () => {
     assert.match(report, /OR breakout/);
     assert.match(report, /\*Paper fills \/ P&L\*/);
     assert.match(report, /Session P&L/);
-    assert.match(report, /\$100\.42/);
-    assert.match(report, /\$100\.00/);
+    assert.match(report, /\$100000\.42/);
+    assert.match(report, /\$100000\.00/);
+    assert.match(report, /\*Sleeve P&L\*/);
+    assert.match(report, /intraday \(active paper:daily\)/);
+    assert.match(report, /multi-day \(parked\)/);
+    assert.match(report, /crypto \(parked\)/);
+    assert.match(report, /options \(parked\)/);
+    assert.match(report, /1–2% of active sleeve/);
     assert.match(report, /\*Walk-forward\*/);
     assert.match(report, /oos_n=2/);
     assert.match(report, /liveEnabled/);
@@ -166,7 +186,7 @@ describe('daily runner fail-closed', () => {
   });
 
   it('runDaily refuses synthetic bars', async () => {
-    const config = loadConfig({ PAPER_CASH: '100', DAYTRADE_UNIVERSE: 'SOFI' });
+    const config = loadConfig({ DAYTRADE_UNIVERSE: 'SOFI' });
     const store = createMemoryStore();
     const barsClient = createBarsClient({ env: {} });
     await assert.rejects(
@@ -176,7 +196,7 @@ describe('daily runner fail-closed', () => {
   });
 
   it('runDaily processes the latest completed alpaca session without live orders', async () => {
-    const config = loadConfig({ PAPER_CASH: '100', DAYTRADE_UNIVERSE: 'SOFI' });
+    const config = loadConfig({ DAYTRADE_UNIVERSE: 'SOFI' });
     const store = createMemoryStore();
     const bars = generateUniverseBars(['SOFI'], { days: 6, seed: 1 });
     for (const bar of bars.SOFI) bar.synthetic = false;
@@ -190,7 +210,7 @@ describe('daily runner fail-closed', () => {
     assert.equal(result.source, 'alpaca');
     assert.equal(result.liveEnabled, false);
     assert.ok(result.sessionDate);
-    assert.equal(result.startingCash, 100);
+    assert.equal(result.startingCash, 100000);
     assert.ok(result.account.equity > 0);
     assert.ok(result.namedEdge);
     assert.ok(result.regime);
@@ -200,7 +220,7 @@ describe('daily runner fail-closed', () => {
   });
 
   it('runDaily POSTs paper fills through orderMirror and journals broker ids without enabling live', async () => {
-    const config = loadConfig({ PAPER_CASH: '100', DAYTRADE_UNIVERSE: 'SOFI' });
+    const config = loadConfig({ DAYTRADE_UNIVERSE: 'SOFI' });
     const store = createMemoryStore();
     const bars = generateUniverseBars(['SOFI'], { days: 6, seed: 1 });
     for (const bar of bars.SOFI) bar.synthetic = false;
@@ -230,15 +250,21 @@ describe('daily runner fail-closed', () => {
     assert.ok(posted.length >= 1, 'expected at least one paper broker POST');
     assert.ok(posted.every((o) => o.side === 'buy' || o.side === 'sell'));
     assert.ok(posted.every((o) => o.clientOrderId && o.clientOrderId.startsWith('wv-')));
+    const buys = posted.filter((o) => o.side === 'buy');
+    assert.ok(buys.some((o) => Number(o.qty) > 25), 'paper POSTs must use sleeve size, not the $100 toy');
     const trades = await store.listTrades({ limit: 50 });
     const withBroker = trades.filter((t) => t.broker_order_id);
     assert.ok(withBroker.length >= 1, 'journal should record broker_order_id');
     assert.ok(withBroker.every((t) => t.client_order_id));
+    assert.ok(withBroker.every((t) => t.features?.sleeve === 'intraday'));
     assert.ok(result.paperBroker.submitted >= 1);
+    assert.equal(result.sleevePnl.pnl.crypto, 0);
+    assert.equal(result.sleevePnl.pnl.options, 0);
+    assert.equal(result.account.startingCash, 100000);
   });
 
   it('runDaily still refuses ALPACA_LIVE through the paper mirror', async () => {
-    const config = loadConfig({ PAPER_CASH: '100', DAYTRADE_UNIVERSE: 'SOFI' });
+    const config = loadConfig({ DAYTRADE_UNIVERSE: 'SOFI' });
     const store = createMemoryStore();
     const bars = generateUniverseBars(['SOFI'], { days: 6, seed: 1 });
     for (const bar of bars.SOFI) bar.synthetic = false;
@@ -260,6 +286,22 @@ describe('daily runner fail-closed', () => {
       }),
       (err) => err.code === 'ALPACA_LIVE_REFUSED'
     );
+  });
+
+  it('rebases a leftover $100 toy paper_account onto the 100k intraday sleeve', async () => {
+    const { accountFromStoreRow } = require('../lib/daily');
+    const toy = {
+      starting_cash: 100,
+      cash: 99.47,
+      settled_cash: 99.47,
+      unsettled_cash: 0,
+      equity: 99.47,
+    };
+    const account = accountFromStoreRow(toy, 100000, { sleeve: 'intraday', settlement: 'instant' });
+    assert.equal(account.startingCash, 100000);
+    assert.equal(account.settledCash, 100000);
+    assert.equal(account.sleeve, 'intraday');
+    assert.equal(account.settlement, 'instant');
   });
 
   it('cli daily exits non-zero without Alpaca keys', () => {
