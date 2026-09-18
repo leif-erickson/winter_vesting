@@ -282,6 +282,19 @@ const NEWS_OVERLAY = {
   'n/a': 'No news overlay on this book.',
 };
 
+const AUCTION_SKIP_OVERLAYS = new Set(['skip_5m_auction', 'us_cash_closed']);
+
+function isAuctionSkipDate(sessionDate, events = FILED_EVENTS) {
+  const day = String(sessionDate || '').slice(0, 10);
+  if (!day) return false;
+  return events.some((e) => e.date === day && AUCTION_SKIP_OVERLAYS.has(e.overlay));
+}
+
+function auctionSkipEvent(sessionDate, events = FILED_EVENTS) {
+  const day = String(sessionDate || '').slice(0, 10);
+  return events.find((e) => e.date === day && AUCTION_SKIP_OVERLAYS.has(e.overlay)) || null;
+}
+
 const FILED_EVENTS = [
   {
     id: 'jackson_hole_warsh',
@@ -890,6 +903,9 @@ module.exports = {
   RESEARCH_BOOKS,
   NEWS_OVERLAY,
   FILED_EVENTS,
+  isAuctionSkipDate,
+  auctionSkipEvent,
+  AUCTION_SKIP_OVERLAYS,
   SESSION_CLOCKS,
   PAPER_SAMPLE,
   CATALOG_IDEAS,

@@ -99,6 +99,8 @@ describe('research events / ideas / candles', () => {
     assert.match(ctx.howToContribute.doNot, /school_books/);
     assert.ok(ctx.frozenWindows.length >= 2);
     assert.equal(ctx.assetBooks.stocks.venue, 'alpaca_paper');
+    assert.equal(ctx.paperSleeves.activeId, 'intraday');
+    assert.equal(ctx.paperSleeves.sleeves.find((s) => s.id === 'crypto').status, 'parked');
     assert.ok(ctx.openIdeas.length >= 1);
     assert.match(ctx.howToContribute.idea, /\/agent\/ideas/);
     assert.match(ctx.howToContribute.edge, /\/research\/edge/);

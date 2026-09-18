@@ -85,7 +85,7 @@ Doubling-horizon (`GOAL_DOUBLE_DAYS`) is a **measurement**, never a promotion ga
 
 | Book | Research here | Live | Notes |
 |---|---|---|---|
-| Stocks | Alpaca 5m paper | Robinhood MCP confirm-to-place after OOS | $100 cash, no options, flatten-by-close |
+| Stocks | Alpaca 5m paper | Robinhood MCP confirm-to-place after OOS | Alpaca paper: 100k **intraday** sleeve, 1–2% risk, flatten-by-close. RH $100 is a separate book. |
 | Crypto | config + `asset_class`; ccxt_paper weekend/24h book | never from this repo | TIA Gann D/W on BTC/ETH (`crypto_gann_swing`) |
 | Futures | Rithmic stub; Globex Sunday open | wstrat_candlemaster after R\|Protocol | NQ/ES AMT later; CL/PL Tori 4h; NT out; fills not live |
 | Options | research note / IV hypothesis | not on $100 RH cash | defined-risk; no fill engine this pass |
@@ -111,8 +111,9 @@ Weekday `paper:daily` is the tape. Weekly is where the edge is **maintained**. N
 
 ## Execution
 
-- **Local journal** (`trade_journal`): every paper fill is still append/upserted. This is the research source of truth for rank / OOS.
-- **Alpaca paper POSTs** (`paper:daily` only): the same fill is also `POST /v2/orders` to `https://paper-api.alpaca.markets` so the Alpaca paper account shows orders and positions. Default **on**. Opt out: `PAPER_BROKER_ORDERS=false` or `ALPACA_SUBMIT_PAPER=0`.
+- **Local journal** (`trade_journal`): every paper fill is still append/upserted (sleeve-sized qty, `features.sleeve`). This is the research source of truth for rank / OOS.
+- **Alpaca paper POSTs** (`paper:daily` only): the same fill is also `POST /v2/orders` to `https://paper-api.alpaca.markets` so the Alpaca paper account shows orders and positions. Default **on**. Opt out: `PAPER_BROKER_ORDERS=false` or `ALPACA_SUBMIT_PAPER=0`. Idempotent `client_order_id`.
+- **Sleeves:** mental ~400k as four ~100k books. **intraday** is active for `paper:daily`. **multi-day / crypto / options** stay parked until wired (crypto/options only if Alpaca paper allows). Risk 1–2% of active sleeve equity. No 1-trade/day cap. Reports split P&amp;L by sleeve.
 - **Live** stays hard-off: `ALPACA_LIVE` / live host refused; Robinhood `LIVE_SWITCH = false`. Do not treat paper POSTs as a live enable.
 - `paper:replay` does **not** POST to Alpaca (historical lookback would spam the paper book).
 

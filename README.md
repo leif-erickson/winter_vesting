@@ -1,6 +1,6 @@
 # Winter vesting
 
-Research runtime for **exploring US equity strategies**. Alpaca **paper** is the venue for now. Live Robinhood Agentic Trading is a possible later path on a **small cash budget** (modeled at $100 here; that may increase, and this is likely **not** the live account). This is not financial advice. Most retail day-trading systems lose money.
+Research runtime for **exploring US equity strategies**. Alpaca **paper** is the venue for now, sized as four ~$100k sleeves (~$400k mental buying power). Live Robinhood Agentic Trading is a possible later path on a **small cash budget** (modeled at $100; that may increase, and this is **not** the Alpaca paper book). This is not financial advice. Most retail day-trading systems lose money.
 
 The loop is self-directed: file a hypothesis → persist candles and context (news, analysis, macro) → paper-trade the idea → journal the “why” → review OOS → keep, change, or kill. Doubling capital is a **measurement**, not a promotion gate. Walk-forward out-of-sample results are the gate. That is how this repo avoids fitting noise.
 
@@ -9,7 +9,7 @@ Strategy (facet budget, books, Oct–Nov 2025 holdout, weekly edge): [docs/STRAT
 ## Intent
 
 - **Paper first.** Alpaca paper data and paper fills. `paper:daily` also POSTs those fills to `https://paper-api.alpaca.markets` (default on). `https://api.alpaca.markets` and `ALPACA_LIVE=1` are refused.
-- **Tiny live later, maybe.** After a setup is `live-eligible`, Grokbot may call Robinhood Agentic Trading MCP only when you confirm a **specific** order. No Robinhood keys belong here. $100 is a research budget; do not assume it is the right funded account.
+- **Tiny live later, maybe.** After a setup is `live-eligible`, Grokbot may call Robinhood Agentic Trading MCP only when you confirm a **specific** order. No Robinhood keys belong here. $100 is a Robinhood research budget; Alpaca paper uses the 100k intraday sleeve.
 - **Track context that might actually matter.** News, current analysis, and slower macro (for example notes citing [lynalden.com](https://www.lynalden.com/) on liquidity / fiscal regime). Store a URL plus a short note — not a paywalled reprint.
 - **Track candles and techniques.** Persist 5-minute RTH bars, run methods with a **2–5 facet** budget (ORB, VWAP, RSI, relative volume, bar reversal, expansion hold / reset fade), and write every paper fill to the journal with features and a reason so you can review and improve. Frozen Oct–Nov 2025 windows are holdouts, not fit sets.
 - **Self-directed exploration.** Slack ideas can land here via Grokbot as `inbox` hypotheses. They are not trades.
@@ -80,6 +80,8 @@ Put them in `backend/.env` as `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` (never comm
 
 `PAPER_BROKER_ORDERS` / `ALPACA_SUBMIT_PAPER` control POSTs to the Alpaca **paper** API (`https://paper-api.alpaca.markets`). Default **on** for `paper:daily` so the paper account is not idle. Journal fills are still written. Opt out with `PAPER_BROKER_ORDERS=false` (or `ALPACA_SUBMIT_PAPER=0`). `paper:replay` never POSTs. Never set `ALPACA_LIVE=1`.
 
+Alpaca paper capital is **not** the Robinhood $100 model. `PAPER_SLEEVE_EQUITY` (default `100000`) × four sleeves is the mental ~400k book. `paper:daily` sizes from the **intraday** sleeve at `PAPER_SLEEVE_RISK_PCT` (default `0.01`, clamped to 1–2%). Multi-day / crypto / options stay parked. `PAPER_CASH=100` remains the RH research budget only.
+
 ## Daily live-data paper PoC
 
 Weekdays after the US cash close, [`.github/workflows/paper-daily.yml`](.github/workflows/paper-daily.yml) runs `cd backend && npm ci && npm run paper:daily`.
@@ -100,7 +102,7 @@ Weekdays after the US cash close, [`.github/workflows/paper-daily.yml`](.github/
    - `bar_reversal` — pin or engulf at VWAP
    - `impulse_hold` — continuation in an `expansion` regime only
    - `roundtrip_fade` — SELL signal in a `reset` regime; the cash book does not short
-3. **Risk.** Model the account as **$100 cash, no options**. A single name is capped at 25% of that ($25), using fractional shares. At most one open position. Daily-loss kill switch. Flatten before the close. **Sold proceeds are unsettled (T+1) and not reusable the same session.** The same sized long + flatten is what `paper:daily` POSTs to Alpaca paper.
+3. **Risk.** Alpaca paper sizes against the **intraday sleeve** (default $100k) at **1–2% risk per trade** (env `PAPER_SLEEVE_RISK_PCT`, clamped). Planned R should sit in that 1–2 band. No 1-trade/day cap — the same symbol may trade multiple times. At most one open position at a time. Daily-loss kill switch. Flatten before the close. Sold proceeds are reusable the same session on this paper sleeve (Alpaca paper, not the RH T+1 $100 model). News/event mornings (NFP/CPI/FOMC) still skip 5m auction entries. Multi-day / crypto / options sleeves stay parked. The same sleeve-sized long + flatten is what `paper:daily` POSTs to Alpaca paper.
 4. **Journal.** Every paper fill is written to `trade_journal` (symbol, timestamp, side, features/reason, paper price, size, `asset_class`, outcome when known, plus `broker_order_id` / `client_order_id` when the paper API accepted the order). Default replay and daily persist **append / upsert** (identity: symbol + ts + setup + side). `paper:rank` never deletes the journal. Use `--reset` only to rebuild. Sample growth is historical Alpaca lookback plus daily paper fills.
 5. **Context.** `research_events` holds news / analysis / macro / indicator notes. `strategy_ideas` holds Slack/Grokbot/UI hypotheses until you paper them or reject them.
 6. **Learning.** Rolling walk-forward (5 sessions in-sample / 2 out-of-sample) **and** holdout on frozen Oct–Nov 2025 windows. A setup becomes **live-eligible** only if it clears `PROMOTION_GATES` and is not `anomaly_dependent`. Everything still executes as paper.
@@ -138,7 +140,7 @@ If `AGENT_TOKEN` is set, mutating `/agent/*` and research writes require `Author
 cd backend && npm test
 ```
 
-Covers indicator math, candle/session geometry, signal detection (including regime-gated families), journal writes, ranking/promotion gates, holdout / `anomaly_dependent` blocks, weekly edge report, goal/overfit flags, research events/ideas/candles, the live switch staying off, the daily report formatter, Alpaca paper refusing live URLs, paper broker POSTs with a mocked client, the Rithmic stub never placing, and an end-to-end synthetic replay.
+Covers indicator math, candle/session geometry, signal detection (including regime-gated families), journal writes, ranking/promotion gates, holdout / `anomaly_dependent` blocks, weekly edge report, goal/overfit flags, research events/ideas/candles, the live switch staying off, the daily report formatter, Alpaca paper refusing live URLs, paper broker POSTs with a mocked client, sleeve 1–2% sizing (not the $100 toy), live Alpaca/Robinhood remaining refused, the Rithmic stub never placing, and an end-to-end synthetic replay.
 
 ## Layout
 
@@ -154,7 +156,8 @@ backend/lib/researchBoard.js  books matrix, catalog ideas, verified paper-sample
 backend/lib/agent.js       Grokbot context snapshot
 backend/lib/indicators.js  RSI, VWAP, opening range, relative volume
 backend/lib/signals.js     setup detectors
-backend/lib/paper.js       sizing, T+1 cash, kill switch
+backend/lib/paper.js       sleeve risk sizing, cash, kill switch
+backend/lib/sleeves.js     four Alpaca paper sleeves (intraday active; others parked)
 backend/lib/store.js       Postgres + in-memory journal / research
 backend/lib/rank.js        walk-forward OOS rank + promote
 backend/lib/robinhood.js   live stub, LIVE_SWITCH = false
