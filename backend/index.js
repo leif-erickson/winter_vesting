@@ -16,6 +16,7 @@ const { normalizeEvent, normalizeIdea } = require('./lib/research');
 const { boardSnapshot } = require('./lib/researchBoard');
 const { assessGoal } = require('./lib/goals');
 const { getAgentContext } = require('./lib/agent');
+const { sleevesSnapshot, splitPnlBySleeve } = require('./lib/sleeves');
 
 dotenv.config();
 
@@ -124,7 +125,7 @@ app.get('/trading/account', async (_req, res) => {
   try {
     const account = await getStore().getAccount();
     const positions = await getStore().listPositions();
-    res.json({ account, positions, liveEnabled: isLiveEnabled() });
+    res.json({ account, positions, liveEnabled: isLiveEnabled(), paperSleeves: sleevesSnapshot(loadConfig().paperSleeves) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -183,14 +184,18 @@ app.get('/trading/pnl', async (_req, res) => {
     const trades = await store.listTrades({ limit: 500 });
     const closed = trades.filter((t) => t.status === 'closed');
     const realized = closed.reduce((sum, t) => sum + Number(t.pnl || 0), 0);
+    const sleevePnl = splitPnlBySleeve(trades);
+    const config = loadConfig();
     res.json({
-      startingCash: Number(account.starting_cash ?? 100),
+      startingCash: Number(account.starting_cash ?? config.startingCash),
       cash: Number(account.cash),
       settledCash: Number(account.settled_cash),
       unsettledCash: Number(account.unsettled_cash),
       equity: Number(account.equity),
       realizedPnl: realized,
       tradeCount: trades.length,
+      sleevePnl,
+      paperSleeves: sleevesSnapshot(config.paperSleeves),
       liveEnabled: isLiveEnabled(),
     });
   } catch (error) {

@@ -18,6 +18,7 @@ const {
   sqnSnapshot,
   PAPER_SAMPLE,
   FILED_EVENTS,
+  isAuctionSkipDate,
   CME_TRADING_HOURS,
   sessionClocksSnapshot,
 } = require('../lib/researchBoard');
@@ -352,6 +353,11 @@ describe('research board / next-to-explore ledger', () => {
     assert.equal(FILED_EVENTS[0].id, 'jackson_hole_warsh');
     assert.equal(FILED_EVENTS.find((e) => e.id === 'labor_day').date, '2026-09-07');
     assert.equal(FILED_EVENTS.find((e) => e.id === 'labor_day').hoursUrl, CME_TRADING_HOURS);
+    assert.equal(isAuctionSkipDate('2026-09-04'), true);
+    assert.equal(isAuctionSkipDate('2026-09-11'), true);
+    assert.equal(isAuctionSkipDate('2026-09-16'), true);
+    assert.equal(isAuctionSkipDate('2026-09-07'), true);
+    assert.equal(isAuctionSkipDate('2026-08-27'), false);
     assert.equal(PAPER_SAMPLE.oos.orbBreakout.n, DECLARED_ORB_OOS_N);
 
     const md = fs.readFileSync(path.join(__dirname, '../../docs/RESEARCH.md'), 'utf8');

@@ -14,6 +14,8 @@ const { rankAndPromote } = require('./rank');
 const { flattenBars } = require('./research');
 const { setupIdsForSymbol, DEFAULT_REPLAY_DAYS } = require('./config');
 const { makePaperClientOrderId } = require('./alpacaPaper');
+const { auctionSkipEvent } = require('./researchBoard');
+const { ACTIVE_PAPER_SLEEVE } = require('./sleeves');
 
 const JOURNAL_LIST_LIMIT = 10000;
 
@@ -180,6 +182,15 @@ async function simulateSession({
     ? store.upsertTrade.bind(store)
     : store.insertTrade.bind(store);
 
+  const skipEvent = auctionSkipEvent(sessionDate);
+  const newsSkip = skipEvent
+    ? {
+      skipped: true,
+      overlay: skipEvent.overlay || 'skip_5m_auction',
+      event: skipEvent,
+    }
+    : { skipped: false, overlay: null, event: null };
+
   const minutes = [...new Set(dayBars.map((b) => b.minuteOfDay))].sort((a, b) => a - b);
   for (const minute of minutes) {
     for (const position of [...open]) {
@@ -202,16 +213,26 @@ async function simulateSession({
       }
     }
 
+    if (newsSkip.skipped) continue;
+
     const minuteSignals = sessionSignals.filter((s) => s.minuteOfDay === minute);
     for (const signal of minuteSignals) {
       if (String(signal.side || 'BUY').toUpperCase() !== 'BUY') continue;
       const gate = allowEntry(account, config, open.length);
       if (!gate.ok) continue;
+      const sleeveEquity = Number(account.equity || config.startingCash);
       const sized = sizePosition({
         settledCash: account.settledCash,
         price: signal.paperPrice,
-        startingCash: config.startingCash,
-        maxPositionPct: config.maxPositionPct,
+        stop: signal.stop,
+        target: signal.target,
+        side: signal.side,
+        sleeveEquity,
+        riskPct: config.riskPct,
+        minRiskPct: config.minRiskPct,
+        maxRiskPct: config.maxRiskPct,
+        minPlannedR: config.minPlannedR,
+        maxPlannedR: config.maxPlannedR,
       });
       if (sized.shares <= 0) continue;
       const bought = buy(account, { price: signal.paperPrice, shares: sized.shares });
@@ -220,6 +241,7 @@ async function simulateSession({
         ...bought.account,
         equity: bought.account.settledCash + bought.account.unsettledCash + sized.notional,
       };
+      const sleeve = config.activeSleeve || ACTIVE_PAPER_SLEEVE;
       const clientOrderId = makePaperClientOrderId({
         symbol: signal.symbol,
         ts: signal.ts,
@@ -236,12 +258,20 @@ async function simulateSession({
         extendedHours: true,
         clientOrderId,
       }, paperBroker);
+      const features = {
+        ...(signal.features || {}),
+        sleeve,
+        riskPct: sized.riskPct,
+        riskDollars: sized.riskDollars,
+        plannedR: sized.plannedR,
+        sleeveEquity: sized.sleeveEquity,
+      };
       const row = await writeTrade({
         symbol: signal.symbol,
         ts: signal.ts,
         side: signal.side,
         setupId: signal.setupId,
-        features: signal.features,
+        features,
         reason: signal.reason,
         paperPrice: signal.paperPrice,
         size: sized.shares,
@@ -290,7 +320,7 @@ async function simulateSession({
     if (idx >= 0) open.splice(idx, 1);
   }
 
-  return { account, sessionSignals, paperBroker };
+  return { account, sessionSignals, paperBroker, newsSkip };
 }
 
 async function persistCandles(store, barsBySymbol, timeframe = '5m') {
@@ -316,7 +346,10 @@ async function runReplay({
   if (persist && reset && typeof store.resetPaper === 'function') {
     await store.resetPaper(config.startingCash);
   }
-  let account = createAccount(config.startingCash);
+  let account = createAccount(config.startingCash, {
+    sleeve: config.activeSleeve,
+    settlement: 'instant',
+  });
   const allSignals = [];
   const dates = allSessionDates(barsBySymbol);
 

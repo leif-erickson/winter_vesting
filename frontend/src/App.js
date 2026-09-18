@@ -23,7 +23,7 @@ function App() {
     <div className="app">
       <header className="app-header">
         <h1>Winter vesting</h1>
-        <p className="sub">Alpaca paper research · $100 model · live Robinhood confirm-to-place and out of band</p>
+        <p className="sub">Alpaca paper · 100k intraday sleeve (1–2% risk) · live Robinhood confirm-to-place and out of band</p>
         <nav>
           <button className={tab === 'trading' ? 'active' : ''} onClick={() => setTab('trading')}>Day trading</button>
           <button className={tab === 'research' ? 'active' : ''} onClick={() => setTab('research')}>Research</button>
@@ -114,7 +114,9 @@ function TradingDashboard() {
           <p>Settled cash {money(account?.settled_cash ?? account?.settledCash)}</p>
           <p>Unsettled {money(account?.unsettled_cash ?? account?.unsettledCash)}</p>
           <p>Realized P&amp;L {money(account?.realizedPnl)}</p>
-          <p className="hint">Sold proceeds settle T+1 and are not reusable the same session. Max 25% of the $100 in one name. No options.</p>
+          <p>Intraday sleeve {money(account?.sleevePnl?.pnl?.intraday)}</p>
+          <p>Multi-day {money(account?.sleevePnl?.pnl?.multi_day)} · crypto {money(account?.sleevePnl?.pnl?.crypto)} · options {money(account?.sleevePnl?.pnl?.options)}</p>
+          <p className="hint">Active sleeve: intraday at 1–2% risk of ~$100k. Multi-day / crypto / options parked. Not Robinhood Agentic. No 1-trade/day cap. Live stays off.</p>
         </article>
         <article>
           <h3>Open paper positions</h3>

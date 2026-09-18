@@ -19,11 +19,11 @@ Asset books (stocks / crypto / futures / options) and the named stock-auction ed
 - `https://api.alpaca.markets` (live) and `ALPACA_LIVE=1` are **refused**. The daily/broker adapter errors out rather than silently trading live.
 - Paper broker POSTs default **on** (`PAPER_BROKER_ORDERS` / `ALPACA_SUBMIT_PAPER`). Opt out with `PAPER_BROKER_ORDERS=false` or `ALPACA_SUBMIT_PAPER=0`. Orders use a deterministic `client_order_id` (journal identity) so a re-run does not double-POST. `broker_order_id` and `client_order_id` are stored on the journal row.
 - `paper:replay` stays **journal-only** (no Alpaca POSTs). Do not wire replay to the paper brokerage — a 90-day replay would dump historical fills onto today's paper account.
-- Sizing still follows the $100 cash / T+1 / no-short / flatten-by-close model. POSTs are the same fractional long + flatten sells, not a live-money path.
+- Sizing uses the **intraday sleeve** (default $100k, 1–2% risk per trade). Unused sleeves (multi-day, crypto, options) stay parked so the mental 4×100k book stays convertible. Do not copy Robinhood Agentic $100 / 25% caps onto this venue. POSTs are the same fractional long + flatten sells, with a deterministic `client_order_id`. News/event skip days (NFP/CPI/FOMC) still throttle 5m auction entries.
 
 ## Robinhood Agentic MCP
 
-Live Robinhood stays hard-off in this repo (`LIVE_SWITCH = false` in `backend/lib/robinhood.js`). No Robinhood keys belong here. After a setup is `live-eligible`, Grokbot may call Robinhood Agentic Trading MCP (review then place) only when a human confirms a **specific** order. Slack ideas enter through `POST /agent/ideas` as hypotheses — see [GROKBOT.md](GROKBOT.md). The $100 cash model is a research budget; it may change and is likely not the live account.
+Live Robinhood stays hard-off in this repo (`LIVE_SWITCH = false` in `backend/lib/robinhood.js`). No Robinhood keys belong here. After a setup is `live-eligible`, Grokbot may call Robinhood Agentic Trading MCP (review then place) only when a human confirms a **specific** order. Slack ideas enter through `POST /agent/ideas` as hypotheses — see [GROKBOT.md](GROKBOT.md). The $100 cash model is a **Robinhood** research budget; it may change and is likely not the live account. Alpaca paper is a separate 100k-sleeve book.
 
 ## Rithmic (stub)
 

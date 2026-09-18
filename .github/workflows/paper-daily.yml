@@ -33,6 +33,10 @@ jobs:
           # Live host / ALPACA_LIVE stay refused in code. Opt out: PAPER_BROKER_ORDERS=false.
           PAPER_BROKER_ORDERS: 'true'
           ALPACA_SUBMIT_PAPER: '1'
+          # Intraday sleeve (not RH $100). 1% of 100k, clamped to 1–2%.
+          PAPER_SLEEVE_EQUITY: '100000'
+          PAPER_SLEEVE_RISK_PCT: '0.01'
+          MAX_ENTRIES_PER_DAY: '0'
           TZ: America/New_York
         run: npm run paper:daily
 
